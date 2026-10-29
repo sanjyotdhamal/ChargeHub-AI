@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import DiscoverPage from "./discover/page";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, ArrowRight } from "lucide-react";
 
@@ -17,61 +16,63 @@ const EXIT_FADE_S          = 0.5;   // Fade-out duration
 export default function RootPage() {
   const router                      = useRouter();
   const { setIsSplashActive }       = useApp();
-  const [showSplash, setShowSplash] = useState<boolean>(false);
+  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [mounted, setMounted]       = useState<boolean>(false);
   const [exiting, setExiting]       = useState<boolean>(false);
 
-  useEffect(() => {
-    setMounted(true);
+  const navigateAfterSplash = async () => {
     try {
-      const played = sessionStorage.getItem("ch_intro_played");
-      if (!played) {
-        setShowSplash(true);
-        setIsSplashActive(true);
-
-        // Step 1: after car finishes + hold, trigger exit fade
-        const exitTimer = setTimeout(() => {
-          setExiting(true);
-        }, TOTAL_SPLASH_MS);
-
-        // Step 2: after fade completes, unmount splash
-        const doneTimer = setTimeout(() => {
-          try { sessionStorage.setItem("ch_intro_played", "true"); } catch {}
-          setShowSplash(false);
-          setIsSplashActive(false);
-          setExiting(false);
-          router.replace("/discover");
-        }, TOTAL_SPLASH_MS + EXIT_FADE_S * 1000);
-
-        return () => {
-          clearTimeout(exitTimer);
-          clearTimeout(doneTimer);
-        };
-      } else {
-        setIsSplashActive(false);
-        router.replace("/discover");
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          router.replace("/home");
+          return;
+        }
       }
     } catch {
-      setIsSplashActive(false);
-      router.replace("/discover");
+      // Fallback to login
     }
-  }, [router, setIsSplashActive]);
+    router.replace("/login");
+  };
 
-  const dismissSplash = () => {
-    try { sessionStorage.setItem("ch_intro_played", "true"); } catch {}
-    setExiting(true);
-    setTimeout(() => {
+  useEffect(() => {
+    setMounted(true);
+    setIsSplashActive(true);
+
+    // Step 1: after car finishes + hold, trigger exit fade
+    const exitTimer = setTimeout(() => {
+      setExiting(true);
+    }, TOTAL_SPLASH_MS);
+
+    // Step 2: after fade completes, unmount splash and navigate
+    const doneTimer = setTimeout(async () => {
       setShowSplash(false);
       setIsSplashActive(false);
       setExiting(false);
-      router.replace("/discover");
+      await navigateAfterSplash();
+    }, TOTAL_SPLASH_MS + EXIT_FADE_S * 1000);
+
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(doneTimer);
+    };
+  }, [router, setIsSplashActive]);
+
+  const dismissSplash = async () => {
+    setExiting(true);
+    setTimeout(async () => {
+      setShowSplash(false);
+      setIsSplashActive(false);
+      setExiting(false);
+      await navigateAfterSplash();
     }, EXIT_FADE_S * 1000);
   };
 
   return (
     <div className="relative w-full h-full flex flex-col bg-[#F4F6F9] overflow-hidden">
-      {/* Main app always mounted underneath — zero white screen */}
-      <DiscoverPage />
+      {/* Backdrop while splash is active */}
+      <div className="w-full h-full bg-[#F4F6F9]" />
 
       {/* ── First-launch Splash Intro ── */}
       <AnimatePresence>

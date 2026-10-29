@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
+import { AuthProvider } from "@/context/AuthContext";
 import MobileFrame from "@/components/MobileFrame";
 
 const geistSans = Geist({
@@ -27,9 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased bg-[#F8FAFC]`}
     >
       <body className="min-h-full flex flex-col bg-[#F8FAFC]">
-        <AppProvider>
-          <MobileFrame>{children}</MobileFrame>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <MobileFrame>{children}</MobileFrame>
+          </AppProvider>
+        </AuthProvider>
       </body>
     </html>
   );

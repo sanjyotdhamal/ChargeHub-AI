@@ -9,8 +9,15 @@ export default function BottomTabBar() {
   const pathname = usePathname();
   const { isSplashActive } = useApp();
 
-  // Hide tab bar only during splash animation or on dedicated flows (station detail/session)
-  if (isSplashActive || pathname?.startsWith("/session") || pathname?.startsWith("/station")) {
+  // Hide tab bar on splash, auth pages (login/signup) or dedicated flows (station detail/session)
+  if (
+    isSplashActive ||
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname?.startsWith("/session") ||
+    pathname?.startsWith("/station")
+  ) {
     return null;
   }
 
