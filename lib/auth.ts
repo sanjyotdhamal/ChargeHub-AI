@@ -17,6 +17,14 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  city?: string;
+  chargingPreference?: "balanced" | "fastest" | "cheapest" | "nearest";
+  notifications?: {
+    chargingComplete: boolean;
+    lowBattery: boolean;
+    priceDrop: boolean;
+  };
 }
 
 function getJwtSecret(): Uint8Array {
@@ -78,13 +86,23 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     if (!session) return null;
 
     await connectDB();
-    const userDoc = await User.findById(session.sub).select("_id name email").lean();
+    const userDoc = await User.findById(session.sub)
+      .select("_id name email phone city chargingPreference notifications")
+      .lean();
     if (!userDoc) return null;
 
     return {
       id: userDoc._id.toString(),
       name: userDoc.name,
       email: userDoc.email,
+      phone: userDoc.phone || "",
+      city: userDoc.city || "",
+      chargingPreference: userDoc.chargingPreference || "balanced",
+      notifications: userDoc.notifications || {
+        chargingComplete: true,
+        lowBattery: true,
+        priceDrop: false,
+      },
     };
   } catch {
     return null;

@@ -1,12 +1,20 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  city?: string;
+  chargingPreference?: "balanced" | "fastest" | "cheapest" | "nearest";
+  notifications?: {
+    chargingComplete: boolean;
+    lowBattery: boolean;
+    priceDrop: boolean;
+  };
 }
 
 export interface AuthResponseResult {
@@ -22,6 +30,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<AuthResponseResult>;
   signup: (name: string, email: string, password: string) => Promise<AuthResponseResult>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,39 +40,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
   const router = useRouter();
 
+  const loadUser = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+          return;
+        }
+      }
+      setUser(null);
+    } catch (err) {
+      console.warn("Could not check current auth session:", err);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Load current user session on mount
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadUser() {
-      try {
-        const res = await fetch("/api/auth/me", {
-          method: "GET",
-          headers: { Accept: "application/json" },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && data.user) {
-            setUser(data.user);
-          }
-        } else {
-          if (isMounted) setUser(null);
-        }
-      } catch (err) {
-        console.warn("Could not check current auth session:", err);
-        if (isMounted) setUser(null);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
     loadUser();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  }, [loadUser]);
 
   const login = async (email: string, password: string): Promise<AuthResponseResult> => {
     try {
@@ -143,7 +146,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        signup,
+        logout,
+        refreshUser: loadUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

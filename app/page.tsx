@@ -21,17 +21,11 @@ export default function RootPage() {
   const [exiting, setExiting]       = useState<boolean>(false);
 
   const navigateAfterSplash = async () => {
+    // Always log out on fresh app open so the login page is shown every time.
     try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          router.replace("/home");
-          return;
-        }
-      }
+      await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Fallback to login
+      // Ignore errors — cookie will just be cleared client-side on login
     }
     router.replace("/login");
   };

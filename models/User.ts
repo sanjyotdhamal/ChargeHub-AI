@@ -4,6 +4,14 @@ export interface IUser extends Document {
   name: string;
   email: string;
   passwordHash: string;
+  phone?: string;
+  city?: string;
+  chargingPreference: "balanced" | "fastest" | "cheapest" | "nearest";
+  notifications: {
+    chargingComplete: boolean;
+    lowBattery: boolean;
+    priceDrop: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +36,26 @@ const UserSchema = new Schema<IUser>(
     passwordHash: {
       type: String,
       required: [true, "Password hash is required"],
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    chargingPreference: {
+      type: String,
+      enum: ["balanced", "fastest", "cheapest", "nearest"],
+      default: "balanced",
+    },
+    notifications: {
+      chargingComplete: { type: Boolean, default: true },
+      lowBattery: { type: Boolean, default: true },
+      priceDrop: { type: Boolean, default: false },
     },
   },
   {

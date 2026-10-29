@@ -6,6 +6,8 @@ import { Search, Wallet, SlidersHorizontal, MapPin, Navigation, X } from "lucide
 import { stations } from "@/data/stations";
 import { scoreAllStations, ScoredStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
+import { useVehicles } from "@/context/VehicleContext";
+import { useAuth } from "@/context/AuthContext";
 import StationMap from "@/components/StationMap";
 import BatterySlider from "@/components/BatterySlider";
 import FilterChips, { FilterOption } from "@/components/FilterChips";
@@ -34,6 +36,8 @@ type LocationState =
 
 export default function DiscoverPage() {
   const { walletBalance, batteryPercent, userProfile } = useApp();
+  const { activeVehicle, hasVehicle } = useVehicles();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
@@ -41,10 +45,24 @@ export default function DiscoverPage() {
   const [locationState, setLocationState] = useState<LocationState>({ status: "idle" });
   const [showLocationBanner, setShowLocationBanner] = useState(true);
 
-  // Re-rank stations with AI scoring when batteryPercent changes
+  // Default filter to active vehicle connector if available
+  useEffect(() => {
+    if (activeVehicle?.connectorType) {
+      if (activeVehicle.connectorType === "CCS2") setActiveFilter("CCS2");
+      else if (activeVehicle.connectorType === "Type 2") setActiveFilter("Type 2");
+      else if (activeVehicle.connectorType === "CHAdeMO") setActiveFilter("CHAdeMO");
+    }
+  }, [activeVehicle?.connectorType]);
+
+  // Re-rank stations with AI scoring when batteryPercent, vehicle, or preference changes
   const scoredStations = useMemo(() => {
-    return scoreAllStations(stations, batteryPercent);
-  }, [batteryPercent]);
+    return scoreAllStations(
+      stations,
+      batteryPercent,
+      activeVehicle,
+      user?.chargingPreference
+    );
+  }, [batteryPercent, activeVehicle, user?.chargingPreference]);
 
   // When user location is granted, recalculate real distances and sort nearest-first
   const stationsWithRealDistance = useMemo(() => {
@@ -240,6 +258,24 @@ export default function DiscoverPage() {
             >
               <X size={13} />
             </button>
+          </div>
+        )}
+
+        {/* Missing Vehicle Prompt Banner */}
+        {!hasVehicle && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm shrink-0">🚗</span>
+              <p className="text-[10px] font-black text-amber-900 leading-tight truncate">
+                Add your vehicle for accurate range &amp; charger matching
+              </p>
+            </div>
+            <Link
+              href="/profile"
+              className="bg-amber-400 hover:bg-amber-500 text-slate-950 px-2.5 py-1 rounded-xl text-[10px] font-black shrink-0 transition-colors shadow-xs"
+            >
+              Add EV
+            </Link>
           </div>
         )}
 

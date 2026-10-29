@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { VehicleProvider } from "@/context/VehicleContext";
 import MobileFrame from "@/components/MobileFrame";
 
 const geistSans = Geist({
@@ -29,9 +30,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-full flex flex-col bg-[#F8FAFC]">
         <AuthProvider>
-          <AppProvider>
-            <MobileFrame>{children}</MobileFrame>
-          </AppProvider>
+          <VehicleProvider>
+            <AppProvider>
+              <MobileFrame>{children}</MobileFrame>
+            </AppProvider>
+          </VehicleProvider>
         </AuthProvider>
       </body>
     </html>

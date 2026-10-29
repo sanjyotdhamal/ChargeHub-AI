@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { Zap, Square, ShieldCheck, MapPin } from "lucide-react";
 import { stations } from "@/data/stations";
 import { useApp } from "@/context/AppContext";
+import { useVehicles } from "@/context/VehicleContext";
 import ChargingRing from "@/components/ChargingRing";
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { batteryPercent: initialBattery, setBatteryPercent, addSessionRecord, deductWalletMoney } = useApp();
+  const { effectiveVehicle } = useVehicles();
 
   const stationId = parseInt(resolvedParams.id, 10);
   const station = stations.find((s) => s.id === stationId) || stations[0];
@@ -20,10 +22,14 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
 
-  // Price calculation
+  // Price & charging speed capped by vehicle max charging power
   const currentCost = parseFloat((kwhDelivered * station.price).toFixed(2));
-  const maxKwhCapacity = 40.5; // vehicle battery size
-  const timeRemainingMins = Math.max(0, Math.round(((100 - battery) / 100 * maxKwhCapacity) / (station.speedKw / 60)));
+  const maxKwhCapacity = effectiveVehicle.batteryCapacityKwh;
+  const effectiveChargingKw = Math.min(station.speedKw, effectiveVehicle.maxChargingPowerKw);
+  const timeRemainingMins = Math.max(
+    0,
+    Math.round(((100 - battery) / 100 * maxKwhCapacity) / (effectiveChargingKw / 60))
+  );
 
   // Simulated live charging tick interval
   useEffect(() => {
@@ -32,7 +38,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
       // Delivery rate simulation
-      const kwhIncrement = (station.speedKw / 3600) * 8; 
+      const kwhIncrement = (effectiveChargingKw / 3600) * 8; 
       setKwhDelivered((prev) => parseFloat((prev + kwhIncrement).toFixed(2)));
 
       setBattery((prev) => {
@@ -42,7 +48,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isFinished, station.speedKw]);
+  }, [isFinished, effectiveChargingKw]);
 
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -55,6 +61,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     deductWalletMoney(currentCost);
     setBatteryPercent(Math.round(battery));
 
+    const matchedConnector =
+      station.chargers.find((c) => c.connector === effectiveVehicle.connectorType)?.connector ||
+      station.chargers[0]?.connector ||
+      effectiveVehicle.connectorType;
+
     // Record session history
     addSessionRecord({
       stationId: station.id,
@@ -64,7 +75,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       kwh: parseFloat(kwhDelivered.toFixed(1)),
       cost: currentCost > 0 ? currentCost : 120,
       durationMinutes: Math.max(1, Math.round(elapsedSeconds / 60)),
-      connectorType: station.chargers[0]?.connector || "CCS2",
+      connectorType: matchedConnector,
     });
 
     // Navigate to history page after small delay
