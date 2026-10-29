@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F4F6F9;
+  --foreground: #0F172A;
+  --color-lime: #7EF000;
+  --color-lime-dark: #6BD000;
+  --color-dark-card: #FFFFFF;
+  --color-sage: #F4F6F9;
+  --color-apple: #7EF000;
+  --color-forest: #FFFFFF;
+  --color-nearblack: #FFFFFF;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-lime: var(--color-lime);
+  --color-sage: var(--color-sage);
+  --color-apple: var(--color-apple);
+  --color-forest: var(--color-forest);
+  --color-nearblack: var(--color-nearblack);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: #F8FAFC;
+  color: #0F172A;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Ensure all text default inside app container is crisp dark slate */
+p, span, h1, h2, h3, h4, h5, h6, label, div {
+  color: inherit;
+}
+
+/* Custom scrollbars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Soft shadows for ultra-crisp mobile UI */
+.shadow-card {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-lime {
+  box-shadow: 0 8px 24px rgba(126, 240, 0, 0.35);
+}
