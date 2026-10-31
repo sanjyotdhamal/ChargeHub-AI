@@ -76,7 +76,7 @@ export default function ModalSheet({
             </div>
 
             {/* Scrollable Content Body */}
-            <div className="flex-1 overflow-y-auto p-5 no-scrollbar bg-[#F4F6F9]">
+            <div className="flex-1 overflow-y-auto p-5 pb-24 no-scrollbar bg-[#F4F6F9]">
               {children}
             </div>
           </motion.div>

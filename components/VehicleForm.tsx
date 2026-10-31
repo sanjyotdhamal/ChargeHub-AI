@@ -511,26 +511,23 @@ export default function VehicleForm({
           </div>
         </div>
 
-        {/* Demo App Disclaimer Note */}
-        <p className="text-[10px] text-center font-bold text-slate-500 bg-slate-100/70 p-2 rounded-xl border border-slate-200">
-          Demo app: please don&apos;t enter real vehicle details.
-        </p>
-
         {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full py-3.5 px-4 bg-[#7EF000] hover:bg-[#70D800] active:scale-98 text-slate-950 rounded-xl font-black text-xs tracking-wide shadow-[0_4px_16px_rgba(126,240,0,0.4)] border border-lime-400 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 size={16} className="animate-spin text-slate-950" />
-              <span>Saving EV Details…</span>
-            </>
-          ) : (
-            <span>{isEditing ? "Update Electric Vehicle" : "Add Vehicle to Garage"}</span>
-          )}
-        </button>
+        <div className="pt-2 pb-4">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full py-4 px-4 bg-[#7EF000] hover:bg-[#70D800] active:scale-98 text-slate-950 rounded-2xl font-black text-sm tracking-wide shadow-[0_6px_20px_rgba(126,240,0,0.45)] border border-lime-400 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={18} className="animate-spin text-slate-950" />
+                <span>Saving EV Details…</span>
+              </>
+            ) : (
+              <span>{isEditing ? "Update Electric Vehicle" : "Add Vehicle to Garage"}</span>
+            )}
+          </button>
+        </div>
       </form>
     </ModalSheet>
   );
