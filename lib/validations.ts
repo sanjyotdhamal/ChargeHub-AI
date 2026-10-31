@@ -132,3 +132,32 @@ export const ChangePasswordSchema = z
   });
 
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+
+export const StationQuerySchema = z
+  .object({
+    network: z.string().optional(),
+    connector: z.string().optional(),
+    minPowerKw: z.coerce.number().min(0).optional(),
+    availableOnly: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((val) => val === "true"),
+    lat: z.coerce.number().min(-90).max(90).optional(),
+    lng: z.coerce.number().min(-180).max(180).optional(),
+    radiusKm: z.coerce.number().min(1).max(500).optional(),
+    limit: z.coerce.number().min(1).max(500).default(200),
+  })
+  .refine(
+    (data) => {
+      const geoProps = [data.lat, data.lng, data.radiusKm];
+      const count = geoProps.filter((v) => v !== undefined).length;
+      return count === 0 || count === 3;
+    },
+    {
+      message: "lat, lng, and radiusKm must all be provided together",
+      path: ["radiusKm"],
+    }
+  );
+
+export type StationQuery = z.infer<typeof StationQuerySchema>;
+

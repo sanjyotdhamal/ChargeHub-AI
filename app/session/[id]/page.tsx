@@ -2,20 +2,49 @@
 
 import React, { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Square, ShieldCheck, MapPin } from "lucide-react";
-import { stations } from "@/data/stations";
+import { Zap, Square, ShieldCheck, MapPin, AlertCircle } from "lucide-react";
+import { useStations } from "@/context/StationsContext";
 import { useApp } from "@/context/AppContext";
 import { useVehicles } from "@/context/VehicleContext";
 import ChargingRing from "@/components/ChargingRing";
+import { Station } from "@/types/station";
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { batteryPercent: initialBattery, setBatteryPercent, addSessionRecord, deductWalletMoney } = useApp();
   const { effectiveVehicle } = useVehicles();
+  const { getStationById, stations, loading: contextLoading } = useStations();
 
   const stationId = parseInt(resolvedParams.id, 10);
-  const station = stations.find((s) => s.id === stationId) || stations[0];
+  const [station, setStation] = useState<Station | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function fetchStation() {
+      setLoading(true);
+      const found = await getStationById(stationId);
+      if (isCancelled) return;
+      if (found) {
+        setStation(found);
+      } else if (stations.length > 0) {
+        setStation(stations[0]);
+      }
+      setLoading(false);
+    }
+
+    if (!isNaN(stationId)) {
+      fetchStation();
+    } else {
+      setLoading(false);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [stationId, getStationById, stations]);
 
   const [battery, setBattery] = useState<number>(initialBattery);
   const [kwhDelivered, setKwhDelivered] = useState<number>(0.0);
@@ -23,17 +52,15 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [isFinished, setIsFinished] = useState<boolean>(false);
 
   // Price & charging speed capped by vehicle max charging power
-  const currentCost = parseFloat((kwhDelivered * station.price).toFixed(2));
+  const price = station?.price ?? 15;
+  const speedKw = station?.speedKw ?? 60;
+  const currentCost = parseFloat((kwhDelivered * price).toFixed(2));
   const maxKwhCapacity = effectiveVehicle.batteryCapacityKwh;
-  const effectiveChargingKw = Math.min(station.speedKw, effectiveVehicle.maxChargingPowerKw);
-  const timeRemainingMins = Math.max(
-    0,
-    Math.round(((100 - battery) / 100 * maxKwhCapacity) / (effectiveChargingKw / 60))
-  );
+  const effectiveChargingKw = Math.min(speedKw, effectiveVehicle.maxChargingPowerKw);
 
   // Simulated live charging tick interval
   useEffect(() => {
-    if (isFinished) return;
+    if (isFinished || !station) return;
 
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
@@ -48,7 +75,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isFinished, effectiveChargingKw]);
+  }, [isFinished, effectiveChargingKw, station]);
 
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -57,6 +84,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   };
 
   const handleStopCharging = () => {
+    if (!station) return;
     setIsFinished(true);
     deductWalletMoney(currentCost);
     setBatteryPercent(Math.round(battery));
@@ -83,6 +111,33 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       router.push("/history");
     }, 800);
   };
+
+  if (loading || (contextLoading && !station)) {
+    return (
+      <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-10 h-10 rounded-full border-4 border-[#7EF000] border-t-transparent animate-spin mb-3" />
+        <p className="text-xs font-black text-slate-700 uppercase tracking-wider">
+          Initializing Charging Session...
+        </p>
+      </div>
+    );
+  }
+
+  if (!station) {
+    return (
+      <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle size={40} className="text-red-500 mb-2" />
+        <h2 className="text-lg font-black text-slate-900 mb-1">Session Error</h2>
+        <p className="text-xs text-slate-500 mb-4">Could not load station details for charging session.</p>
+        <button
+          onClick={() => router.push("/discover")}
+          className="bg-[#7EF000] text-slate-950 px-4 py-2 rounded-xl text-xs font-black shadow-sm"
+        >
+          Return to Map
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full bg-[#F4F6F9] flex flex-col justify-between p-4 text-slate-900 select-none overflow-y-auto no-scrollbar">
@@ -157,7 +212,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         <button
           onClick={handleStopCharging}
           disabled={isFinished}
-          className="w-full bg-[#7EF000] hover:bg-[#70D800] text-slate-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-sm shadow-[0_4px_20px_rgba(126,240,0,0.45)] transition-all active:scale-[0.99]"
+          className="w-full bg-[#7EF000] hover:bg-[#70D800] text-slate-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-sm shadow-[0_4px_20px_rgba(126,240,0,0.45)] transition-all active:scale-[0.99] cursor-pointer"
         >
           <Square size={16} className="fill-slate-950 stroke-none" />
           <span>{isFinished ? "Ending Session..." : "Stop Charging"}</span>

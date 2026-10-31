@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { StationsProvider } from "@/context/StationsContext";
 import { VehicleProvider } from "@/context/VehicleContext";
 import MobileFrame from "@/components/MobileFrame";
 
@@ -30,11 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-full flex flex-col bg-[#F8FAFC]">
         <AuthProvider>
-          <VehicleProvider>
-            <AppProvider>
-              <MobileFrame>{children}</MobileFrame>
-            </AppProvider>
-          </VehicleProvider>
+          <StationsProvider>
+            <VehicleProvider>
+              <AppProvider>
+                <MobileFrame>{children}</MobileFrame>
+              </AppProvider>
+            </VehicleProvider>
+          </StationsProvider>
         </AuthProvider>
       </body>
     </html>

@@ -1,4 +1,4 @@
-import { Station } from "@/data/stations";
+import { Station } from "@/types/station";
 
 export type ScoredStation = Station & {
   aiScore: number;

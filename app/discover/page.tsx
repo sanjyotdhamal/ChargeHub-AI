@@ -3,12 +3,13 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Search, Wallet, SlidersHorizontal, MapPin, Navigation, X } from "lucide-react";
-import { stations } from "@/data/stations";
+import { useStations } from "@/context/StationsContext";
 import { scoreAllStations, ScoredStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
 import { useVehicles } from "@/context/VehicleContext";
 import { useAuth } from "@/context/AuthContext";
 import StationMap from "@/components/StationMap";
+import { StationMapSkeleton } from "@/components/StationSkeleton";
 import BatterySlider from "@/components/BatterySlider";
 import FilterChips, { FilterOption } from "@/components/FilterChips";
 import BottomSheet from "@/components/BottomSheet";
@@ -38,6 +39,7 @@ export default function DiscoverPage() {
   const { walletBalance, batteryPercent, userProfile } = useApp();
   const { activeVehicle, hasVehicle } = useVehicles();
   const { user } = useAuth();
+  const { stations, loading: stationsLoading, error: stationsError, refresh: refreshStations } = useStations();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
@@ -62,7 +64,7 @@ export default function DiscoverPage() {
       activeVehicle,
       user?.chargingPreference
     );
-  }, [batteryPercent, activeVehicle, user?.chargingPreference]);
+  }, [stations, batteryPercent, activeVehicle, user?.chargingPreference]);
 
   // When user location is granted, recalculate real distances and sort nearest-first
   const stationsWithRealDistance = useMemo(() => {
@@ -101,6 +103,13 @@ export default function DiscoverPage() {
         activeFilter === "Jio-bp pulse"
       ) {
         if (st.network !== activeFilter) return false;
+      }
+
+      if (activeFilter === "CCS2" || activeFilter === "Type 2" || activeFilter === "CHAdeMO") {
+        const hasConnector = st.chargers?.some(
+          (c) => c.connector.toLowerCase() === activeFilter.toLowerCase()
+        );
+        if (!hasConnector) return false;
       }
 
       return true;
@@ -335,12 +344,16 @@ export default function DiscoverPage() {
 
       {/* ── Google Map Container with All Maharashtra Stations ── */}
       <div className="w-full flex-1 relative z-0">
-        <StationMap
-          stations={filteredStations}
-          selectedStation={selectedStation}
-          onSelectStation={(st) => setSelectedStation(st)}
-          userLocation={locationState.status === "granted" ? { lat: locationState.lat, lng: locationState.lng } : undefined}
-        />
+        {stationsLoading && stations.length === 0 ? (
+          <StationMapSkeleton />
+        ) : (
+          <StationMap
+            stations={filteredStations}
+            selectedStation={selectedStation}
+            onSelectStation={(st) => setSelectedStation(st)}
+            userLocation={locationState.status === "granted" ? { lat: locationState.lat, lng: locationState.lng } : undefined}
+          />
+        )}
       </div>
 
       {/* ── Draggable Bottom Sheet with Station List & AI Pick Card ── */}
@@ -349,6 +362,14 @@ export default function DiscoverPage() {
         selectedStation={selectedStation}
         onSelectStation={(st) => setSelectedStation(st)}
         locationGranted={locationState.status === "granted"}
+        loading={stationsLoading}
+        error={stationsError}
+        onRetry={refreshStations}
+        hasActiveFilters={activeFilter !== "all" || searchQuery.trim().length > 0}
+        onClearFilters={() => {
+          setActiveFilter("all");
+          setSearchQuery("");
+        }}
       />
     </div>
   );

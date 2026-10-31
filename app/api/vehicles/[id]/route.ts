@@ -76,7 +76,7 @@ export async function PATCH(
     }
 
     vehicle.brand = data.brand;
-    vehicle.model = data.model;
+    (vehicle as any).model = data.model;
     vehicle.variant = data.variant || "";
     vehicle.year = data.year;
     vehicle.registrationNumber = data.registrationNumber;

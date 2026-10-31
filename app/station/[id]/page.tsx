@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use } from "react";
+import React, { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,20 +13,70 @@ import {
   XCircle,
   AlertCircle,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
-import { stations } from "@/data/stations";
+import { useStations } from "@/context/StationsContext";
 import { scoreStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
+import { useVehicles } from "@/context/VehicleContext";
+import { useAuth } from "@/context/AuthContext";
+import { Station } from "@/types/station";
 
 export default function StationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { batteryPercent } = useApp();
+  const { activeVehicle } = useVehicles();
+  const { user } = useAuth();
+  const { stations, getStationById, loading: contextLoading } = useStations();
 
   const stationId = parseInt(resolvedParams.id, 10);
-  const rawStation = stations.find((s) => s.id === stationId);
+  const [stationDoc, setStationDoc] = useState<Station | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [notFound, setNotFound] = useState<boolean>(false);
 
-  if (!rawStation) {
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadStation() {
+      setIsLoading(true);
+      setNotFound(false);
+
+      const found = await getStationById(stationId);
+      if (isCancelled) return;
+
+      if (found) {
+        setStationDoc(found);
+      } else {
+        setNotFound(true);
+      }
+      setIsLoading(false);
+    }
+
+    if (!isNaN(stationId)) {
+      loadStation();
+    } else {
+      setNotFound(true);
+      setIsLoading(false);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [stationId, getStationById]);
+
+  if (isLoading || (contextLoading && !stationDoc)) {
+    return (
+      <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-10 h-10 rounded-full border-4 border-[#7EF000] border-t-transparent animate-spin mb-3" />
+        <p className="text-xs font-black text-slate-700 uppercase tracking-wider">
+          Loading Station Details...
+        </p>
+      </div>
+    );
+  }
+
+  if (notFound || !stationDoc) {
     return (
       <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle size={40} className="text-red-500 mb-2" />
@@ -34,7 +84,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
         <p className="text-xs text-slate-500 mb-4">The requested charging station could not be found.</p>
         <button
           onClick={() => router.push("/discover")}
-          className="bg-[#7EF000] text-slate-950 px-4 py-2 rounded-xl text-xs font-black"
+          className="bg-[#7EF000] text-slate-950 px-4 py-2 rounded-xl text-xs font-black shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition-all"
         >
           Return to Map
         </button>
@@ -42,8 +92,14 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  // Score station with current battery state
-  const station = scoreStation(rawStation, batteryPercent, stations);
+  // Score station with current battery state & stations list
+  const station = scoreStation(
+    stationDoc,
+    batteryPercent,
+    stations.length > 0 ? stations : [stationDoc],
+    activeVehicle,
+    user?.chargingPreference
+  );
 
   const handleNavigate = () => {
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`;
@@ -63,7 +119,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
       <div className="p-4 flex items-center justify-between border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-30 shadow-sm">
         <button
           onClick={() => router.back()}
-          className="p-2 rounded-full bg-slate-100 border border-slate-200 text-slate-800 hover:bg-slate-200 transition-colors"
+          className="p-2 rounded-full bg-slate-100 border border-slate-200 text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
         >
           <ArrowLeft size={18} />
         </button>

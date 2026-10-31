@@ -7,11 +7,19 @@ import StationCard from "./StationCard";
 import { ScoredStation } from "@/lib/scoring";
 import { ListFilter, Navigation } from "lucide-react";
 
+import { StationCardSkeleton } from "./StationSkeleton";
+import { AlertCircle, RefreshCw, XCircle } from "lucide-react";
+
 type BottomSheetProps = {
   stations: ScoredStation[];
   selectedStation: ScoredStation | null;
   onSelectStation: (station: ScoredStation) => void;
   locationGranted?: boolean;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  onClearFilters?: () => void;
+  hasActiveFilters?: boolean;
 };
 
 export default function BottomSheet({
@@ -19,6 +27,11 @@ export default function BottomSheet({
   selectedStation,
   onSelectStation,
   locationGranted = false,
+  loading = false,
+  error = null,
+  onRetry,
+  onClearFilters,
+  hasActiveFilters = false,
 }: BottomSheetProps) {
   // Snap states: "collapsed", "half", "full"
   const [snapState, setSnapState] = useState<"collapsed" | "half" | "full">("half");
@@ -70,29 +83,68 @@ export default function BottomSheet({
 
       {/* Content scroll area */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 no-scrollbar pb-20 bg-[#F4F6F9]">
-        {aiPick && (
-          <div>
-            <AiPickCard station={aiPick} onSelect={onSelectStation} locationGranted={locationGranted} />
+        {loading ? (
+          <div className="space-y-3 pt-1">
+            <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider px-1">
+              Loading Stations...
+            </div>
+            <StationCardSkeleton />
+            <StationCardSkeleton />
+            <StationCardSkeleton />
           </div>
-        )}
-
-        <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider pt-1 px-1 flex items-center gap-2">
-          {locationGranted ? "Nearby Hubs" : "All Network Hubs"} ({listStations.length})
-        </div>
-
-        {listStations.map((station) => (
-          <StationCard
-            key={station.id}
-            station={station}
-            isSelected={selectedStation?.id === station.id}
-            onSelect={onSelectStation}
-          />
-        ))}
-
-        {stations.length === 0 && (
-          <div className="py-8 text-center text-slate-700 text-xs font-black">
-            No charging stations match selected filter.
+        ) : error ? (
+          <div className="py-8 flex flex-col items-center justify-center text-center p-4">
+            <AlertCircle size={36} className="text-red-500 mb-2" />
+            <p className="text-xs font-black text-slate-900 mb-1">Failed to load stations</p>
+            <p className="text-[11px] text-slate-500 mb-4 max-w-xs">{error}</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="bg-[#7EF000] text-slate-950 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+              >
+                <RefreshCw size={13} /> Retry
+              </button>
+            )}
           </div>
+        ) : (
+          <>
+            {aiPick && (
+              <div>
+                <AiPickCard station={aiPick} onSelect={onSelectStation} locationGranted={locationGranted} />
+              </div>
+            )}
+
+            <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider pt-1 px-1 flex items-center gap-2">
+              {locationGranted ? "Nearby Hubs" : "All Network Hubs"} ({listStations.length})
+            </div>
+
+            {listStations.map((station) => (
+              <StationCard
+                key={station.id}
+                station={station}
+                isSelected={selectedStation?.id === station.id}
+                onSelect={onSelectStation}
+              />
+            ))}
+
+            {stations.length === 0 && (
+              <div className="py-8 flex flex-col items-center justify-center text-center p-4">
+                <XCircle size={36} className="text-slate-400 mb-2" />
+                <p className="text-xs font-black text-slate-800 mb-1">No stations found</p>
+                <p className="text-[11px] text-slate-500 mb-3">
+                  No charging stations match your active search or filters.
+                </p>
+                {hasActiveFilters && onClearFilters && (
+                  <button
+                    onClick={onClearFilters}
+                    className="bg-slate-900 text-white font-black text-xs px-4 py-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </motion.div>
