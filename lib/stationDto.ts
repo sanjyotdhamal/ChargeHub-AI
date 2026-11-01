@@ -15,7 +15,7 @@ export function toStationDto(doc: any): StationDTO {
     : [];
 
   return {
-    id: doc.stationId !== undefined ? doc.stationId : (typeof doc.id === "number" ? doc.id : 0),
+    id: doc.stationId !== undefined ? doc.stationId : (doc.id !== undefined ? doc.id : 0),
     name: doc.name || "",
     network: doc.network || "",
     city: doc.city || "",
@@ -32,5 +32,7 @@ export function toStationDto(doc: any): StationDTO {
     address: doc.address || "",
     rating: doc.rating ?? 4.5,
     chargers,
+    source: doc.source || "Sample",
+    isSimulated: Boolean(doc.isSimulated),
   };
 }

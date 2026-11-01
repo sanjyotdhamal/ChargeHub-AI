@@ -30,7 +30,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
   const { user } = useAuth();
   const { stations, getStationById, loading: contextLoading } = useStations();
 
-  const stationId = parseInt(resolvedParams.id, 10);
+  const stationId = resolvedParams.id;
   const [stationDoc, setStationDoc] = useState<Station | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
@@ -53,7 +53,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
       setIsLoading(false);
     }
 
-    if (!isNaN(stationId)) {
+    if (stationId) {
       loadStation();
     } else {
       setNotFound(true);
@@ -110,6 +110,8 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
     if (network.includes("Tata")) return "bg-teal-50 text-teal-700 border-teal-200";
     if (network.includes("Statiq")) return "bg-orange-50 text-orange-700 border-orange-200";
     if (network.includes("ChargeZone")) return "bg-blue-50 text-blue-700 border-blue-200";
+    if (network.includes("Adani")) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (network.includes("Jio-bp")) return "bg-lime-50 text-lime-700 border-lime-200";
     return "bg-slate-100 text-slate-700 border-slate-200";
   };
 
@@ -153,6 +155,13 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
             <MapPin size={13} className="text-slate-400 shrink-0 mt-0.5" />
             <span>{station.address}</span>
           </p>
+
+          {/* Simulated indicator note */}
+          {station.isSimulated && (
+            <div className="mt-2.5 inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200/80 px-2.5 py-1 rounded-xl text-[10px] font-bold">
+              <span>⚡ Price and availability are simulated</span>
+            </div>
+          )}
         </div>
 
         {/* AI Insight Crisp White Card */}
@@ -247,6 +256,22 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               );
             })}
+          </div>
+
+          {/* Open Charge Map Attribution Credit */}
+          <div className="pt-4 pb-2 text-center border-t border-slate-200/60 mt-4">
+            <p className="text-[10px] text-slate-500 font-bold">
+              Station data:{" "}
+              <a
+                href="https://openchargemap.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-slate-800"
+              >
+                Open Charge Map contributors
+              </a>{" "}
+              (CC BY 4.0)
+            </p>
           </div>
         </div>
       </div>

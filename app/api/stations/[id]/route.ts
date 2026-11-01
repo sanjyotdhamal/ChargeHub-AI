@@ -15,13 +15,14 @@ export async function GET(
     }
 
     const { id } = await params;
-    const stationIdNum = parseInt(id, 10);
-    if (isNaN(stationIdNum) || stationIdNum <= 0) {
+    if (!id || typeof id !== "string" || id.trim().length === 0) {
       return NextResponse.json({ error: "Invalid station ID" }, { status: 400 });
     }
 
+    const stationIdQuery: number | string = !isNaN(Number(id)) ? Number(id) : id;
+
     await connectDB();
-    const stationDoc = await Station.findOne({ stationId: stationIdNum }).lean();
+    const stationDoc = await Station.findOne({ stationId: stationIdQuery }).lean();
 
     if (!stationDoc) {
       return NextResponse.json({ error: "Station not found" }, { status: 404 });

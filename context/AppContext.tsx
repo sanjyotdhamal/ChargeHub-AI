@@ -14,7 +14,7 @@ export type Transaction = {
 
 export type ChargingSessionRecord = {
   id: string;
-  stationId: number;
+  stationId: number | string;
   stationName: string;
   network: string;
   date: string;

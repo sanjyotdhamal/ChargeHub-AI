@@ -6,9 +6,9 @@ export type Charger = {
 };
 
 export type Station = {
-  id: number;
+  id: number | string;
   name: string;
-  network: "Tata Power" | "Statiq" | "ChargeZone" | "Jio-bp pulse" | string;
+  network: "Tata Power" | "Statiq" | "ChargeZone" | "Jio-bp pulse" | "Adani TotalEnergies" | string;
   city: string;
   district: string;
   state: string;
@@ -23,4 +23,6 @@ export type Station = {
   address: string;
   rating: number;
   chargers: Charger[];
+  source?: string;
+  isSimulated?: boolean;
 };

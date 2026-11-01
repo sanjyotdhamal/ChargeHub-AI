@@ -13,7 +13,8 @@ export type FilterOption =
   | "Tata Power"
   | "Jio-bp pulse"
   | "ChargeZone"
-  | "Statiq";
+  | "Statiq"
+  | "Adani TotalEnergies";
 
 type FilterChipsProps = {
   activeFilter: FilterOption;
@@ -29,6 +30,7 @@ export default function FilterChips({ activeFilter, onSelectFilter }: FilterChip
     { id: "Jio-bp pulse", label: "Jio-bp pulse", icon: Building2 },
     { id: "ChargeZone", label: "ChargeZone", icon: Building2 },
     { id: "Statiq", label: "Statiq", icon: Building2 },
+    { id: "Adani TotalEnergies", label: "Adani TotalEnergies", icon: Building2 },
   ];
 
   return (

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:stations": "tsx scripts/seed-stations.ts"
+    "seed:stations": "tsx scripts/seed-stations.ts",
+    "import:ocm": "tsx scripts/import-ocm.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",

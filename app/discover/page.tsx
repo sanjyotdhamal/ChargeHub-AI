@@ -100,7 +100,8 @@ export default function DiscoverPage() {
         activeFilter === "Tata Power" ||
         activeFilter === "Statiq" ||
         activeFilter === "ChargeZone" ||
-        activeFilter === "Jio-bp pulse"
+        activeFilter === "Jio-bp pulse" ||
+        activeFilter === "Adani TotalEnergies"
       ) {
         if (st.network !== activeFilter) return false;
       }

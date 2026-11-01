@@ -8,7 +8,7 @@ export interface ICharger {
 }
 
 export interface IStation extends Document {
-  stationId: number;
+  stationId: number | string;
   name: string;
   network: string;
   city?: string;
@@ -26,6 +26,8 @@ export interface IStation extends Document {
   available: boolean;
   rating?: number;
   chargers: ICharger[];
+  source?: string;
+  isSimulated?: boolean;
   lastUpdated?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -52,7 +54,7 @@ const ChargerSchema = new Schema<ICharger>(
 const StationSchema = new Schema<IStation>(
   {
     stationId: {
-      type: Number,
+      type: Schema.Types.Mixed,
       required: [true, "stationId is required"],
       unique: true,
       index: true,
@@ -129,6 +131,14 @@ const StationSchema = new Schema<IStation>(
     chargers: {
       type: [ChargerSchema],
       default: [],
+    },
+    source: {
+      type: String,
+      default: "Sample",
+    },
+    isSimulated: {
+      type: Boolean,
+      default: false,
     },
     lastUpdated: {
       type: Date,

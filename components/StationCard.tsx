@@ -16,6 +16,8 @@ export default function StationCard({ station, isSelected, onSelect }: StationCa
     if (network.includes("Tata")) return "bg-teal-100 text-teal-900 border-teal-300";
     if (network.includes("Statiq")) return "bg-orange-100 text-orange-900 border-orange-300";
     if (network.includes("ChargeZone")) return "bg-blue-100 text-blue-900 border-blue-300";
+    if (network.includes("Adani")) return "bg-emerald-100 text-emerald-900 border-emerald-300";
+    if (network.includes("Jio-bp")) return "bg-lime-100 text-lime-900 border-lime-300";
     return "bg-slate-100 text-slate-900 border-slate-300";
   };
 
@@ -50,6 +52,11 @@ export default function StationCard({ station, isSelected, onSelect }: StationCa
             </div>
           </div>
           <h4 className="text-xs font-black text-slate-950 truncate">{station.name}</h4>
+          {station.isSimulated && (
+            <span className="text-[9px] font-bold text-amber-600 block mt-0.5">
+              Price & availability are simulated
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col items-end shrink-0">

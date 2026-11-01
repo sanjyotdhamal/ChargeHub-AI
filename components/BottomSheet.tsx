@@ -144,6 +144,22 @@ export default function BottomSheet({
                 )}
               </div>
             )}
+
+            {/* Open Charge Map Attribution Credit */}
+            <div className="pt-3 pb-4 text-center">
+              <p className="text-[10px] text-slate-500 font-bold">
+                Station data:{" "}
+                <a
+                  href="https://openchargemap.org"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-slate-800"
+                >
+                  Open Charge Map contributors
+                </a>{" "}
+                (CC BY 4.0)
+              </p>
+            </div>
           </>
         )}
       </div>

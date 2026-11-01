@@ -9,7 +9,7 @@ type StationsContextType = {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  getStationById: (id: number) => Promise<Station | null>;
+  getStationById: (id: number | string) => Promise<Station | null>;
 };
 
 const StationsContext = createContext<StationsContextType | undefined>(undefined);
@@ -67,9 +67,9 @@ export function StationsProvider({ children }: { children: React.ReactNode }) {
   }, [fetchStations]);
 
   const getStationById = useCallback(
-    async (id: number): Promise<Station | null> => {
+    async (id: number | string): Promise<Station | null> => {
       // 1. Check in-memory list first
-      const existing = stations.find((s) => s.id === id);
+      const existing = stations.find((s) => String(s.id) === String(id));
       if (existing) {
         return existing;
       }

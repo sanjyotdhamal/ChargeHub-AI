@@ -48,12 +48,19 @@ export default function AiPickCard({ station, onSelect, locationGranted = false 
       </div>
 
       {/* Dynamic One-Line AI Pick Reason */}
-      <div className="bg-[#7EF000]/15 rounded-2xl p-2.5 mb-3 border border-[#7EF000] flex items-start gap-1.5">
+      <div className="bg-[#7EF000]/15 rounded-2xl p-2.5 mb-2 border border-[#7EF000] flex items-start gap-1.5">
         <Sparkles size={14} className="text-slate-950 shrink-0 mt-0.5" />
         <p className="text-[11px] text-slate-950 font-black leading-tight">
           {station.aiPickReason}
         </p>
       </div>
+
+      {/* Simulated indicator */}
+      {station.isSimulated && (
+        <p className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 rounded-lg px-2 py-0.5 mb-2.5 inline-block">
+          ⚡ Price and availability are simulated
+        </p>
+      )}
 
       {/* Stats bar */}
       <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">

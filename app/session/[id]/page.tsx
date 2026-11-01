@@ -16,7 +16,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const { effectiveVehicle } = useVehicles();
   const { getStationById, stations, loading: contextLoading } = useStations();
 
-  const stationId = parseInt(resolvedParams.id, 10);
+  const stationId = resolvedParams.id;
   const [station, setStation] = useState<Station | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -35,7 +35,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       setLoading(false);
     }
 
-    if (!isNaN(stationId)) {
+    if (stationId) {
       fetchStation();
     } else {
       setLoading(false);
