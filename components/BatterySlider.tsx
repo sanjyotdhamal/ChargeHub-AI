@@ -7,15 +7,22 @@ import { useVehicles } from "@/context/VehicleContext";
 import { useStations } from "@/context/StationsContext";
 import { predictRangeRisk } from "@/lib/rangeRisk";
 
-export default function BatterySlider() {
+type BatterySliderProps = {
+  nearestStationKm?: number;
+};
+
+export default function BatterySlider({ nearestStationKm: propNearestKm }: BatterySliderProps = {}) {
   const { batteryPercent, setBatteryPercent } = useApp();
   const { activeVehicle, effectiveVehicle } = useVehicles();
   const { stations } = useStations();
   const [vehicleType, setVehicleType] = useState<"car" | "bike" | "truck">("car");
   const [showExplainSheet, setShowExplainSheet] = useState<boolean>(false);
 
-  // Determine nearest station distance from loaded stations
+  // Determine nearest station distance from loaded stations or passed prop
   const nearestStationKm = useMemo(() => {
+    if (propNearestKm != null && !isNaN(propNearestKm) && propNearestKm > 0) {
+      return propNearestKm;
+    }
     if (stations && stations.length > 0) {
       const distances = stations
         .map((s) => Number(s.distanceKm))
@@ -25,7 +32,7 @@ export default function BatterySlider() {
       }
     }
     return 3.8;
-  }, [stations]);
+  }, [propNearestKm, stations]);
 
   // Evaluate Range Risk with decision tree model & fallback rule
   const rangeRisk = useMemo(() => {

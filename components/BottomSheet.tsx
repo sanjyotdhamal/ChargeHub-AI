@@ -8,7 +8,7 @@ import { ScoredStation } from "@/lib/scoring";
 import { ListFilter, Navigation } from "lucide-react";
 
 import { StationCardSkeleton } from "./StationSkeleton";
-import { AlertCircle, RefreshCw, XCircle } from "lucide-react";
+import { AlertCircle, RefreshCw, XCircle, MapPin } from "lucide-react";
 
 type BottomSheetProps = {
   stations: ScoredStation[];
@@ -20,6 +20,7 @@ type BottomSheetProps = {
   onRetry?: () => void;
   onClearFilters?: () => void;
   hasActiveFilters?: boolean;
+  noStationsWithin50km?: boolean;
 };
 
 export default function BottomSheet({
@@ -32,6 +33,7 @@ export default function BottomSheet({
   onRetry,
   onClearFilters,
   hasActiveFilters = false,
+  noStationsWithin50km = false,
 }: BottomSheetProps) {
   // Snap states: "collapsed", "half", "full"
   const [snapState, setSnapState] = useState<"collapsed" | "half" | "full">("half");
@@ -108,6 +110,18 @@ export default function BottomSheet({
           </div>
         ) : (
           <>
+            {noStationsWithin50km && stations.length > 0 && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 shadow-sm text-amber-950 mb-1">
+                <MapPin className="text-amber-600 shrink-0 mt-0.5" size={16} />
+                <div>
+                  <div className="text-xs font-black">No stations within 50 km, showing the nearest</div>
+                  <div className="text-[10px] font-bold text-amber-800 mt-0.5">
+                    Closest hub is {stations[0]?.distanceKm} km away. Sorted by real driving distance.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {aiPick && (
               <div>
                 <AiPickCard station={aiPick} onSelect={onSelectStation} locationGranted={locationGranted} />

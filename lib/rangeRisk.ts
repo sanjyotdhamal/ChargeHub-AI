@@ -91,7 +91,7 @@ export function predictRangeRisk({
       "vehicle_type_Two-Wheeler": vehicleCategory === "Two-Wheeler" ? 1 : 0,
     };
 
-    let currNode: TreeNode | undefined = (treeModel as any)?.root;
+    let currNode: TreeNode | undefined = (treeModel as unknown as { root?: TreeNode })?.root;
 
     while (currNode && !currNode.is_leaf && currNode.left && currNode.right && currNode.feature) {
       const featVal = features[currNode.feature] ?? 0;

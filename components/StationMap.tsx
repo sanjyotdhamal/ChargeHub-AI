@@ -4,7 +4,7 @@ import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from "@react-google-m
 import { useEffect, useState, useMemo } from "react";
 import { ScoredStation } from "@/lib/scoring";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Crosshair, Navigation } from "lucide-react";
 
 const containerStyle = {
   width: "100%",
@@ -115,16 +115,22 @@ type StationMapProps = {
   stations: ScoredStation[];
   selectedStation: ScoredStation | null;
   onSelectStation: (station: ScoredStation) => void;
-  userLocation?: UserLocation;
+  userLocation?: UserLocation | null;
+  userLocationLabel?: string;
+  onMapClick?: (coords: { lat: number; lng: number }) => void;
+  onLiveLocationClick?: () => void;
+  isLocating?: boolean;
+  isSettingLocation?: boolean;
+  shouldFitBounds?: boolean;
 };
 
 // SVG for "You are here" user dot
 function createUserDotSvg(): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-    <circle cx="18" cy="18" r="16" fill="#3B82F6" fill-opacity="0.18"/>
-    <circle cx="18" cy="18" r="9" fill="#2563EB"/>
-    <circle cx="18" cy="18" r="5" fill="#FFFFFF"/>
-    <circle cx="18" cy="18" r="16" fill="none" stroke="#3B82F6" stroke-width="2.5"/>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+    <circle cx="19" cy="19" r="17" fill="#3B82F6" fill-opacity="0.22"/>
+    <circle cx="19" cy="19" r="9" fill="#2563EB"/>
+    <circle cx="19" cy="19" r="5" fill="#FFFFFF"/>
+    <circle cx="19" cy="19" r="17" fill="none" stroke="#2563EB" stroke-width="2"/>
   </svg>`;
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
 }
@@ -134,6 +140,12 @@ export default function StationMap({
   selectedStation,
   onSelectStation,
   userLocation,
+  userLocationLabel,
+  onMapClick,
+  onLiveLocationClick,
+  isLocating = false,
+  isSettingLocation = false,
+  shouldFitBounds = false,
 }: StationMapProps) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "") as string,
@@ -151,13 +163,30 @@ export default function StationMap({
     return () => clearTimeout(timer);
   }, [isLoaded]);
 
-  // Pan map to user location when first granted
+  // Fit bounds when shouldFitBounds is true (e.g. village far from stations)
   useEffect(() => {
-    if (map && userLocation && !selectedStation) {
-      map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
-      map.setZoom(14);
+    if (map && shouldFitBounds && typeof window !== "undefined" && window.google?.maps?.LatLngBounds && stations.length > 0) {
+      const bounds = new window.google.maps.LatLngBounds();
+      if (userLocation) {
+        bounds.extend(new window.google.maps.LatLng(userLocation.lat, userLocation.lng));
+      }
+      stations.slice(0, 10).forEach((st) => {
+        bounds.extend(new window.google.maps.LatLng(st.lat, st.lng));
+      });
+      try {
+        map.fitBounds(bounds, { top: 120, bottom: 220, left: 50, right: 50 });
+      } catch {
+        map.fitBounds(bounds);
+      }
+      return;
     }
-  }, [map, userLocation]);
+
+    // Pan map to user location when first granted if not fitting bounds
+    if (map && userLocation && !selectedStation && !shouldFitBounds) {
+      map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+      map.setZoom(13);
+    }
+  }, [map, userLocation, stations, shouldFitBounds, selectedStation]);
 
   // Pan map when selectedStation changes
   useEffect(() => {
@@ -280,29 +309,41 @@ export default function StationMap({
     <div className="relative w-full h-full">
       <GoogleMap
         mapContainerStyle={containerStyle}
-        center={selectedStation ? { lat: selectedStation.lat, lng: selectedStation.lng } : defaultCenter}
+        center={selectedStation ? { lat: selectedStation.lat, lng: selectedStation.lng } : (userLocation || defaultCenter)}
         zoom={selectedStation ? 15 : 13}
         onLoad={(m) => {
           setMap(m);
+        }}
+        onClick={(e) => {
+          if (onMapClick && e.latLng) {
+            onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+          }
         }}
         options={{
           styles: googleMapLightStyle,
           disableDefaultUI: true,
           zoomControl: false,
           clickableIcons: false,
+          draggableCursor: isSettingLocation ? "crosshair" : undefined,
         }}
       >
         {/* User location marker */}
         {userLocation && typeof window !== "undefined" && window.google?.maps?.Size && (
           <MarkerF
             position={{ lat: userLocation.lat, lng: userLocation.lng }}
+            draggable={true}
+            onDragEnd={(e) => {
+              if (onMapClick && e.latLng) {
+                onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+              }
+            }}
             icon={{
               url: createUserDotSvg(),
               scaledSize: new window.google.maps.Size(36, 36),
               anchor: new window.google.maps.Point(18, 18),
             }}
             zIndex={500}
-            title="Your Location"
+            title="Your Location (Click map or drag marker to move)"
           />
         )}
 
@@ -365,6 +406,33 @@ export default function StationMap({
           </InfoWindowF>
         )}
       </GoogleMap>
+
+      {/* Floating Google Maps Live Location Button */}
+      {onLiveLocationClick && (
+        <button
+          type="button"
+          onClick={() => {
+            if (userLocation && map) {
+              map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+              map.setZoom(15);
+            }
+            onLiveLocationClick();
+          }}
+          className="absolute bottom-36 right-3.5 z-20 w-11 h-11 bg-white hover:bg-slate-50 text-slate-800 rounded-full shadow-[0_4px_16px_rgba(0,0,0,0.2)] border border-slate-200 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+          title="Your Live Location"
+        >
+          <Crosshair
+            size={20}
+            className={
+              isLocating
+                ? "text-blue-600 animate-spin"
+                : userLocation
+                ? "text-blue-600 stroke-[2.5]"
+                : "text-slate-600"
+            }
+          />
+        </button>
+      )}
     </div>
   );
 }

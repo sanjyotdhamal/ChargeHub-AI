@@ -54,9 +54,10 @@ export function StationsProvider({ children }: { children: React.ReactNode }) {
       } else {
         setStations([]);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("StationsContext fetch error:", err);
-      setError(err.message || "Failed to load charging stations");
+      const message = err instanceof Error ? err.message : "Failed to load charging stations";
+      setError(message);
     } finally {
       setLoading(false);
     }

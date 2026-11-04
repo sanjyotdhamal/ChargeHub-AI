@@ -2,7 +2,17 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Search, Wallet, SlidersHorizontal, MapPin, Navigation, X } from "lucide-react";
+import {
+  Search,
+  Wallet,
+  SlidersHorizontal,
+  MapPin,
+  Navigation,
+  X,
+  Crosshair,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { useStations } from "@/context/StationsContext";
 import { scoreAllStations, ScoredStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
@@ -29,11 +39,128 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return parseFloat((R * c).toFixed(1));
 }
 
-type LocationState =
-  | { status: "idle" }
-  | { status: "requesting" }
-  | { status: "granted"; lat: number; lng: number; label: string }
+// Default fallback location when GPS has not been used or after Reset
+const DEFAULT_PUNE_COORDS = { lat: 18.5204, lng: 73.8567 };
+const DEFAULT_LOCATION_LABEL = "Default location: Pune";
+
+export type LocationState =
+  | { status: "default"; lat: number; lng: number; label: string }
+  | { status: "requesting"; message: string }
+  | {
+      status: "granted";
+      lat: number;
+      lng: number;
+      label: string;
+      accuracyMeters?: number;
+    }
   | { status: "denied"; reason: string };
+
+/**
+ * Reverse geocodes coordinates to a friendly place name.
+ */
+async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
+  // 1. Try Google Maps Geocoder if loaded
+  if (typeof window !== "undefined" && window.google?.maps?.Geocoder) {
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await new Promise<string | null>((resolve) => {
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          if (status === "OK" && results && results.length > 0) {
+            for (const r of results) {
+              const comp = r.address_components || [];
+              const subLocality = comp.find(
+                (c) => c.types.includes("sublocality") || c.types.includes("sublocality_level_1")
+              )?.long_name;
+              const locality = comp.find((c) => c.types.includes("locality"))?.long_name;
+              const adminArea = comp.find((c) => c.types.includes("administrative_area_level_2"))?.long_name;
+              const parts = [subLocality, locality, adminArea].filter(Boolean);
+              if (parts.length > 0) {
+                return resolve(Array.from(new Set(parts)).slice(0, 2).join(", "));
+              }
+            }
+            const snippet = results[0].formatted_address.split(",").slice(0, 2).join(",").trim();
+            if (snippet) return resolve(snippet);
+          }
+          resolve(null);
+        });
+      });
+      if (res) return res;
+    } catch {
+      // Continue to free client API fallback
+    }
+  }
+
+  // 2. Free client-side reverse geocoding fallback
+  try {
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const locality = data.locality || data.city;
+      const admin = data.principalSubdivision;
+      if (locality) {
+        return [locality, admin].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+      }
+    }
+  } catch {
+    // Fallback to lat/lng
+  }
+
+  return `Your location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+}
+
+/**
+ * Geocodes an address or village/city name to coordinates
+ */
+async function geocodePlace(query: string): Promise<{ lat: number; lng: number; label: string } | null> {
+  if (typeof window !== "undefined" && window.google?.maps?.Geocoder) {
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await new Promise<{ lat: number; lng: number; label: string } | null>((resolve) => {
+        geocoder.geocode(
+          { address: query, componentRestrictions: { country: "IN" } },
+          (results, status) => {
+            if (status === "OK" && results && results.length > 0) {
+              const best = results[0];
+              const lat = best.geometry.location.lat();
+              const lng = best.geometry.location.lng();
+              const label = best.formatted_address.split(",").slice(0, 2).join(",").trim();
+              resolve({ lat, lng, label });
+            } else {
+              resolve(null);
+            }
+          }
+        );
+      });
+      if (res) return res;
+    } catch {
+      // Continue to fallback
+    }
+  }
+
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+        query + ", Maharashtra, India"
+      )}&format=json&limit=1`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.length > 0) {
+        return {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+          label: data[0].display_name.split(",").slice(0, 2).join(",").trim(),
+        };
+      }
+    }
+  } catch {
+    // Ignore error
+  }
+
+  return null;
+}
 
 export default function DiscoverPage() {
   const { walletBalance, batteryPercent, userProfile } = useApp();
@@ -44,7 +171,15 @@ export default function DiscoverPage() {
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
   const [showSlider, setShowSlider] = useState(false);
-  const [locationState, setLocationState] = useState<LocationState>({ status: "idle" });
+
+  // Location State
+  const [locationState, setLocationState] = useState<LocationState>({
+    status: "default",
+    lat: DEFAULT_PUNE_COORDS.lat,
+    lng: DEFAULT_PUNE_COORDS.lng,
+    label: DEFAULT_LOCATION_LABEL,
+  });
+
   const [showLocationBanner, setShowLocationBanner] = useState(true);
 
   // Default filter to active vehicle connector if available
@@ -56,32 +191,46 @@ export default function DiscoverPage() {
     }
   }, [activeVehicle?.connectorType]);
 
-  // Re-rank stations with AI scoring when batteryPercent, vehicle, or preference changes
+  // Active coordinates used for calculating distance & ranking
+  const activeCoords = useMemo(() => {
+    if (locationState.status === "granted") {
+      return { lat: locationState.lat, lng: locationState.lng, isReal: true };
+    }
+    if (locationState.status === "default") {
+      return { lat: locationState.lat, lng: locationState.lng, isReal: false };
+    }
+    return { lat: DEFAULT_PUNE_COORDS.lat, lng: DEFAULT_PUNE_COORDS.lng, isReal: false };
+  }, [locationState]);
+
+  // 1. Calculate real distances to EVERY station from current coordinates
+  const stationsWithRealDistance = useMemo(() => {
+    return stations.map((st) => ({
+      ...st,
+      distanceKm: haversineKm(activeCoords.lat, activeCoords.lng, st.lat, st.lng),
+    }));
+  }, [stations, activeCoords]);
+
+  // 2. Score stations with real distances taken into account for normalization & AI ranking
   const scoredStations = useMemo(() => {
     return scoreAllStations(
-      stations,
+      stationsWithRealDistance,
       batteryPercent,
       activeVehicle,
       user?.chargingPreference
     );
-  }, [stations, batteryPercent, activeVehicle, user?.chargingPreference]);
+  }, [stationsWithRealDistance, batteryPercent, activeVehicle, user?.chargingPreference]);
 
-  // When user location is granted, recalculate real distances and sort nearest-first
-  const stationsWithRealDistance = useMemo(() => {
-    if (locationState.status !== "granted") return scoredStations;
+  // 3. Sort stations by distance when location is granted
+  const sortedStations = useMemo(() => {
+    if (locationState.status === "granted") {
+      return [...scoredStations].sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+    return scoredStations;
+  }, [scoredStations, locationState.status]);
 
-    const { lat: userLat, lng: userLng } = locationState;
-    return [...scoredStations]
-      .map((st) => ({
-        ...st,
-        distanceKm: haversineKm(userLat, userLng, st.lat, st.lng),
-      }))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [scoredStations, locationState]);
-
-  // Apply filters
+  // 4. Apply search query and connector/network filters
   const filteredStations = useMemo(() => {
-    return stationsWithRealDistance.filter((st) => {
+    return sortedStations.filter((st) => {
       if (searchQuery.trim() !== "") {
         const query = searchQuery.toLowerCase();
         const matchName = st.name.toLowerCase().includes(query);
@@ -115,55 +264,129 @@ export default function DiscoverPage() {
 
       return true;
     });
-  }, [stationsWithRealDistance, searchQuery, activeFilter]);
+  }, [sortedStations, searchQuery, activeFilter]);
 
-  // Request GPS location from browser
-  const requestLocation = useCallback(() => {
+  // 5. 50 km check: If no station is within 50 km, show top 10 nearest stations
+  const stationsWithin50km = useMemo(() => {
+    return filteredStations.filter((st) => st.distanceKm <= 50);
+  }, [filteredStations]);
+
+  const noStationsWithin50km = useMemo(() => {
+    return (
+      (locationState.status === "granted" || locationState.status === "default") &&
+      stationsWithin50km.length === 0 &&
+      filteredStations.length > 0
+    );
+  }, [locationState.status, stationsWithin50km.length, filteredStations.length]);
+
+  // Stations to display: If none within 50 km, guarantee nearest 10 sorted by real distance
+  const displayStations = useMemo(() => {
+    if (noStationsWithin50km) {
+      return [...filteredStations].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 10);
+    }
+    return filteredStations;
+  }, [noStationsWithin50km, filteredStations]);
+
+  // Fit map bounds when stations are far away (>50 km)
+  const shouldFitBounds = useMemo(() => {
+    return (
+      noStationsWithin50km ||
+      (locationState.status === "granted" && (displayStations[0]?.distanceKm ?? 0) > 25)
+    );
+  }, [noStationsWithin50km, locationState.status, displayStations]);
+
+  // ── Request Real-Time Live Location (Google Maps style) ──
+  const requestLiveLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationState({ status: "denied", reason: "Geolocation not supported on this device." });
+      setLocationState({
+        status: "denied",
+        reason: "Geolocation is not supported by your browser or device.",
+      });
       return;
     }
 
-    setLocationState({ status: "requesting" });
+    setLocationState({
+      status: "requesting",
+      message: "Locating your real-time position…",
+    });
 
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        // Reverse-geocode label: check if near Loni Kalbhor area
-        let label = `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
-        if (lat > 18.47 && lat < 18.51 && lng > 73.99 && lng < 74.07) {
-          label = "Loni Kalbhor, Pune";
-        } else if (lat > 18.45 && lat < 18.62 && lng > 73.78 && lng < 73.98) {
-          label = "Pune City";
-        } else if (lat > 18.9 && lat < 19.3 && lng > 72.8 && lng < 73.1) {
-          label = "Mumbai";
-        }
-        setLocationState({ status: "granted", lat, lng, label });
+        const accuracyMeters = pos.coords.accuracy;
+
+        const placeLabel = await reverseGeocodeCoords(lat, lng);
+
+        setLocationState({
+          status: "granted",
+          lat,
+          lng,
+          label: placeLabel,
+          accuracyMeters,
+        });
         setShowLocationBanner(false);
       },
       (err) => {
-        let reason = "Location access denied.";
-        if (err.code === 1) reason = "Location permission denied. Enable it in browser settings.";
-        else if (err.code === 2) reason = "Location unavailable. Check GPS signal.";
-        else if (err.code === 3) reason = "Location request timed out.";
+        let reason = "Unable to retrieve your location.";
+        if (err.code === 1) {
+          reason =
+            "Location access denied. Please click the location/lock icon in your browser address bar to allow location.";
+        } else if (err.code === 2) {
+          reason = "Location signal unavailable. Please ensure GPS/location services are turned on.";
+        } else if (err.code === 3) {
+          reason = "Location request timed out. Please tap the location button again.";
+        }
         setLocationState({ status: "denied", reason });
       },
-      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }, []);
 
-  // Auto-prompt location on first load after 800ms
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (locationState.status === "idle") {
-        setShowLocationBanner(true);
-      }
-    }, 800);
-    return () => clearTimeout(t);
-  }, [locationState.status]);
+  // ── Reset to Default Location (Pune) ──
+  const handleResetLocation = useCallback(() => {
+    setLocationState({
+      status: "default",
+      lat: DEFAULT_PUNE_COORDS.lat,
+      lng: DEFAULT_PUNE_COORDS.lng,
+      label: DEFAULT_LOCATION_LABEL,
+    });
+    setShowLocationBanner(true);
+  }, []);
 
-  const nearestStation = filteredStations[0];
+  // ── Direct Map Click or Marker Drag (Instantly set pin anywhere) ──
+  const handleMapClick = useCallback(async (coords: { lat: number; lng: number }) => {
+    const placeLabel = await reverseGeocodeCoords(coords.lat, coords.lng);
+    setLocationState({
+      status: "granted",
+      lat: coords.lat,
+      lng: coords.lng,
+      label: placeLabel,
+      accuracyMeters: 5,
+    });
+    setShowLocationBanner(false);
+  }, []);
+
+  // ── Village/City Search Handler (Geocodes place & centers map) ──
+  const handleSearchSubmit = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+    const match = await geocodePlace(searchQuery.trim());
+    if (match) {
+      setLocationState({
+        status: "granted",
+        lat: match.lat,
+        lng: match.lng,
+        label: match.label,
+        accuracyMeters: 5,
+      });
+      setShowLocationBanner(false);
+      setSearchQuery(""); // Clear search to display all stations near this village
+    }
+  }, [searchQuery]);
+
+  const nearestStationDistance = displayStations[0]?.distanceKm;
+  const isLocating = locationState.status === "requesting";
+  const isLive = locationState.status === "granted";
 
   return (
     <div className="relative w-full h-full flex flex-col bg-[#F4F6F9] overflow-hidden select-none">
@@ -181,12 +404,14 @@ export default function DiscoverPage() {
               </div>
               <div className="text-[9px] text-slate-600 font-extrabold mt-0.5 flex items-center gap-1">
                 <MapPin size={9} className="text-[#7EF000]" />
-                <span>
-                  {locationState.status === "granted"
+                <span className="truncate max-w-[170px]">
+                  {isLive
                     ? locationState.label
-                    : userProfile.city}
+                    : locationState.status === "default"
+                    ? locationState.label
+                    : "Locating..."}
                   {" · "}
-                  {filteredStations.length} Hubs
+                  {displayStations.length} Hubs
                 </span>
               </div>
             </div>
@@ -202,71 +427,75 @@ export default function DiscoverPage() {
           </Link>
         </div>
 
-        {/* ── Location Permission Banner ── */}
-        {showLocationBanner && locationState.status === "idle" && (
+        {/* ── Location Permission Prompt Banner (Default State) ── */}
+        {showLocationBanner && locationState.status === "default" && (
           <div className="bg-white rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-xl bg-[#7EF000] flex items-center justify-center shrink-0 border border-lime-400">
-                <MapPin size={15} className="text-slate-950" strokeWidth={2.5} />
+                <Navigation size={15} className="text-slate-950" strokeWidth={2.5} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-black text-slate-950">Find Nearest EV Stations</p>
-                <p className="text-[9px] text-slate-500 font-extrabold truncate">Allow location to sort stations by distance</p>
+                <p className="text-[11px] font-black text-slate-950">Use Real-Time Location</p>
+                <p className="text-[9px] text-slate-500 font-bold truncate">Find charging stations closest to you</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
-                onClick={requestLocation}
-                className="bg-[#7EF000] text-slate-950 px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1 hover:bg-lime-400 active:scale-95 transition-all cursor-pointer border border-lime-400"
+                onClick={requestLiveLocation}
+                className="bg-[#7EF000] text-slate-950 px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1 hover:bg-lime-400 active:scale-95 transition-all cursor-pointer border border-lime-400 shadow-xs"
               >
                 <Navigation size={11} strokeWidth={2.5} />
-                Use GPS
+                Live GPS
               </button>
               <button
                 onClick={() => setShowLocationBanner(false)}
-                className="p-1.5 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
               >
-                <X size={13} />
+                <X size={12} />
               </button>
             </div>
           </div>
         )}
 
-        {/* Location requesting state */}
-        {locationState.status === "requesting" && (
-          <div className="bg-white rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-200">
-            <div className="w-5 h-5 rounded-full border-2 border-[#7EF000] border-t-transparent animate-spin shrink-0" />
-            <p className="text-[11px] font-black text-slate-950">Getting your location…</p>
+        {/* ── Locating Status Pill ── */}
+        {isLocating && (
+          <div className="bg-white rounded-2xl px-3.5 py-2 flex items-center gap-2.5 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-200">
+            <div className="w-4 h-4 rounded-full border-2 border-[#7EF000] border-t-transparent animate-spin shrink-0" />
+            <p className="text-[11px] font-black text-slate-950">{locationState.message}</p>
           </div>
         )}
 
-        {/* Location granted — near-me strip */}
-        {locationState.status === "granted" && (
+        {/* ── Active Live Location Strip (Google Maps style) ── */}
+        {isLive && (
           <div className="bg-white rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-300">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#7EF000] animate-pulse" />
-              <p className="text-[10px] font-black text-slate-950">
-                📍 {locationState.label} · Sorted by distance
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#7EF000] animate-pulse shrink-0" />
+              <p className="text-[11px] font-black text-slate-950 truncate">
+                📍 {locationState.label} · Nearest Hubs Sorted
               </p>
             </div>
             <button
-              onClick={() => { setLocationState({ status: "idle" }); setShowLocationBanner(true); }}
-              className="text-[9px] text-slate-500 font-black hover:text-slate-800 cursor-pointer"
+              onClick={handleResetLocation}
+              className="text-[10px] text-slate-500 font-black hover:text-slate-800 bg-slate-100 px-2 py-0.8 rounded-lg cursor-pointer"
+              title="Return to default Pune view"
             >
               Reset
             </button>
           </div>
         )}
 
-        {/* Location denied message */}
+        {/* ── Location Denied / Error Toast ── */}
         {locationState.status === "denied" && (
-          <div className="bg-red-50 rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm border-2 border-red-300">
-            <p className="text-[10px] font-black text-red-700">{locationState.reason}</p>
+          <div className="bg-rose-50 rounded-2xl p-2.5 shadow-sm border-2 border-rose-300 flex items-center justify-between gap-2 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle size={15} className="text-rose-600 shrink-0" />
+              <p className="text-[10px] font-bold text-rose-800 truncate">{locationState.reason}</p>
+            </div>
             <button
-              onClick={() => setLocationState({ status: "idle" })}
-              className="text-red-400 hover:text-red-700 cursor-pointer"
+              onClick={requestLiveLocation}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl shrink-0 flex items-center gap-1 cursor-pointer"
             >
-              <X size={13} />
+              <RefreshCw size={10} /> Retry
             </button>
           </div>
         )}
@@ -292,12 +521,24 @@ export default function DiscoverPage() {
         {/* Search Bar Row */}
         <div className="flex items-center gap-2">
           <div className="flex-1 bg-white/95 backdrop-blur-xl border-2 border-slate-200 rounded-2xl px-3.5 py-2 flex items-center gap-2 shadow-sm">
-            <Search size={16} className="text-slate-500 shrink-0" />
+            <button
+              type="button"
+              onClick={handleSearchSubmit}
+              title="Search place or filter stations"
+              className="text-slate-500 hover:text-slate-950 transition-colors cursor-pointer"
+            >
+              <Search size={16} className="shrink-0" />
+            </button>
             <input
               type="text"
-              placeholder="Search station, city, network…"
+              placeholder="Search station, city, or village…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSearchSubmit();
+                }
+              }}
               className="bg-transparent text-xs text-slate-950 placeholder-slate-500 focus:outline-none w-full font-black"
             />
             {searchQuery && (
@@ -307,17 +548,27 @@ export default function DiscoverPage() {
             )}
           </div>
 
-          {/* Location + Battery toggle */}
+          {/* Location + Battery toggle buttons */}
           <div className="flex items-center gap-1.5">
-            {locationState.status !== "granted" && (
-              <button
-                onClick={requestLocation}
-                title="Use My Location"
-                className="p-2.5 rounded-2xl border-2 bg-white border-slate-200 hover:border-[#7EF000] hover:bg-[#7EF000]/10 text-slate-700 transition-all shadow-sm cursor-pointer"
-              >
-                <Navigation size={15} />
-              </button>
-            )}
+            {/* Live Location Button in Header */}
+            <button
+              onClick={requestLiveLocation}
+              title="Center on Live Location"
+              className={`p-2.5 rounded-2xl border-2 transition-all shadow-sm cursor-pointer ${
+                isLive
+                  ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-xs"
+                  : isLocating
+                  ? "bg-blue-50 text-blue-600 border-blue-400"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-[#7EF000]"
+              }`}
+            >
+              <Navigation
+                size={15}
+                className={isLocating ? "animate-spin" : isLive ? "fill-slate-950" : ""}
+              />
+            </button>
+
+            {/* Battery Level Slider Toggle */}
             <button
               onClick={() => setShowSlider((prev) => !prev)}
               className={`p-2.5 rounded-2xl border-2 transition-all shadow-sm cursor-pointer ${
@@ -325,7 +576,7 @@ export default function DiscoverPage() {
                   ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-[0_4px_14px_rgba(126,240,0,0.4)]"
                   : "bg-white text-slate-950 border-slate-200 hover:border-slate-300"
               }`}
-              title="Adjust Battery Level"
+              title="Adjust Battery Level & Range Risk"
             >
               <SlidersHorizontal size={16} />
             </button>
@@ -335,7 +586,7 @@ export default function DiscoverPage() {
         {/* Battery Slider popup card */}
         {showSlider && (
           <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-            <BatterySlider />
+            <BatterySlider nearestStationKm={nearestStationDistance} />
           </div>
         )}
 
@@ -343,30 +594,35 @@ export default function DiscoverPage() {
         <FilterChips activeFilter={activeFilter} onSelectFilter={setActiveFilter} />
       </div>
 
-      {/* ── Google Map Container with All Maharashtra Stations ── */}
+      {/* ── Google Map Container with Real-Time Live Location Target Button ── */}
       <div className="w-full flex-1 relative z-0">
         {stationsLoading && stations.length === 0 ? (
           <StationMapSkeleton />
         ) : (
           <StationMap
-            stations={filteredStations}
+            stations={displayStations}
             selectedStation={selectedStation}
             onSelectStation={(st) => setSelectedStation(st)}
-            userLocation={locationState.status === "granted" ? { lat: locationState.lat, lng: locationState.lng } : undefined}
+            userLocation={activeCoords ? { lat: activeCoords.lat, lng: activeCoords.lng } : undefined}
+            onMapClick={handleMapClick}
+            onLiveLocationClick={requestLiveLocation}
+            isLocating={isLocating}
+            shouldFitBounds={shouldFitBounds}
           />
         )}
       </div>
 
       {/* ── Draggable Bottom Sheet with Station List & AI Pick Card ── */}
       <BottomSheet
-        stations={filteredStations}
+        stations={displayStations}
         selectedStation={selectedStation}
         onSelectStation={(st) => setSelectedStation(st)}
-        locationGranted={locationState.status === "granted"}
+        locationGranted={isLive}
         loading={stationsLoading}
         error={stationsError}
         onRetry={refreshStations}
         hasActiveFilters={activeFilter !== "all" || searchQuery.trim().length > 0}
+        noStationsWithin50km={noStationsWithin50km}
         onClearFilters={() => {
           setActiveFilter("all");
           setSearchQuery("");
