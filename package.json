@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed:stations": "tsx scripts/seed-stations.ts",
-    "import:ocm": "tsx scripts/import-ocm.ts"
+    "import:ocm": "tsx scripts/import-ocm.ts",
+    "import:csv": "tsx scripts/import-csv-stations.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",

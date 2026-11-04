@@ -1,0 +1,7 @@
+id,name,network,city,district,state,address,latitude,longitude,speed_kw,price_per_kwh,connector_types,available,wait_minutes,rating
+101,Tata Power EV Charging Hub,Tata Power,Saswad,Pune,Maharashtra,Near ST Bus Stand Pune-Saswad Road,18.3444,74.0312,60,18,CCS2|Type 2,true,0,4.8
+102,Statiq Fast Charger,Statiq,Baramati,Pune,Maharashtra,Bhigwan Road Near Market Yard,18.1512,74.5789,120,20,CCS2,true,10,4.6
+103,ChargeZone Rural Fast Hub,ChargeZone,Shirur,Pune,Maharashtra,Pune-Nagar Highway Shirur Bypass,18.8256,74.3789,60,17,CCS2|Type 2,true,5,4.5
+104,Jio-bp pulse Express Hub,Jio-bp pulse,Daund,Pune,Maharashtra,Near Railway Station Road,18.4644,74.5822,50,19,CCS2,true,0,4.7
+105,Zeon High Speed Charging,Zeon Charging,Hadapsar,Pune,Maharashtra,Solapur Highway Hadapsar,18.5022,73.9288,150,21,CCS2|CHAdeMO,true,0,4.9
+106,MIT ADT Campus EV Station,ChargeZone,Loni Kalbhor,Pune,Maharashtra,Pune-Solapur Highway Loni Kalbhor,18.4912,74.0280,30,16,Type 2|CCS2,true,15,4.4
