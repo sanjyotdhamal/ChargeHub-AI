@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Sparkles,
   RefreshCw,
+  BatteryCharging,
 } from "lucide-react";
 import { useStations } from "@/context/StationsContext";
 import { scoreStation } from "@/lib/scoring";
@@ -206,6 +207,81 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
             <div className="text-[9px] text-slate-400 font-medium">mins</div>
           </div>
         </div>
+
+        {/* Estimated Battery Left on Arrival Card */}
+        {(() => {
+          const claimedRange = activeVehicle?.claimedRangeKm ? Number(activeVehicle.claimedRangeKm) : 300;
+          const stationDist = Number(station.distanceKm) || 0;
+          const tripConsumptionPct = (stationDist / claimedRange) * 100;
+          const batteryLeftOnArrival = Math.max(0, Math.round(batteryPercent - tripConsumptionPct));
+          const isCritical = batteryLeftOnArrival <= 15;
+          const isModerate = batteryLeftOnArrival <= 30;
+
+          return (
+            <div className="bg-white border-2 border-slate-200/90 rounded-3xl p-3.5 shadow-sm space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-9 h-9 rounded-2xl flex items-center justify-center border shrink-0 ${
+                      isCritical
+                        ? "bg-rose-50 text-rose-600 border-rose-200"
+                        : isModerate
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-[#7EF000]/20 text-slate-950 border-lime-400"
+                    }`}
+                  >
+                    <BatteryCharging size={18} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Arrival Projection
+                    </div>
+                    <div className="text-xs font-black text-slate-900">
+                      Estimated battery left on arrival
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={`px-3 py-1 rounded-xl text-sm font-black border flex items-center gap-1 ${
+                    isCritical
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : isModerate
+                      ? "bg-amber-50 text-amber-800 border-amber-200"
+                      : "bg-[#7EF000] text-slate-950 border-lime-400"
+                  }`}
+                >
+                  <span>{batteryLeftOnArrival}%</span>
+                </div>
+              </div>
+
+              {/* Visual SoC Bar */}
+              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden flex">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isCritical ? "bg-rose-500" : isModerate ? "bg-amber-500" : "bg-[#7EF000]"
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(3, batteryLeftOnArrival))}%` }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-500">
+                <span>Start: {batteryPercent}%</span>
+                <span>Trip: ~{tripConsumptionPct.toFixed(1)}% ({stationDist} km)</span>
+                <span>Arrival: {batteryLeftOnArrival}%</span>
+              </div>
+
+              {isCritical && (
+                <div className="bg-rose-50 border border-rose-200/80 rounded-2xl p-2.5 text-[10px] font-bold text-rose-700 flex items-center gap-1.5">
+                  <AlertCircle size={13} className="shrink-0 text-rose-600" />
+                  <span>
+                    Low battery buffer on arrival! Drive conservatively to ensure you reach comfortably.
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Chargers / Ports List */}
         <div className="space-y-2 pt-2">

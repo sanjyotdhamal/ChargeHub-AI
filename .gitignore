@@ -3,3 +3,6 @@
 .env
 .env.local
 *.log
+
+# raw datasets
+data/raw/

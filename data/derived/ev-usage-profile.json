@@ -1,0 +1,166 @@
+{
+  "metadata": {
+    "dataset_type": "synthetic dataset",
+    "dataset_name": "EV_Usage_Dataset_v2.csv",
+    "rows_used": 10939,
+    "generation_date": "2026-11-04T10:52:39.009088+00:00"
+  },
+  "electricity_cost_per_kwh": {
+    "overall": {
+      "p10": 5.73,
+      "p50": 7.76,
+      "p90": 9.73
+    },
+    "per_city": {
+      "Ahmedabad": {
+        "p10": 5.71,
+        "p50": 7.72,
+        "p90": 9.66,
+        "count": 1481
+      },
+      "Bangalore": {
+        "p10": 5.73,
+        "p50": 7.79,
+        "p90": 9.66,
+        "count": 1471
+      },
+      "Chennai": {
+        "p10": 5.77,
+        "p50": 7.75,
+        "p90": 9.8,
+        "count": 1438
+      },
+      "Delhi": {
+        "p10": 5.82,
+        "p50": 7.73,
+        "p90": 9.77,
+        "count": 1436
+      },
+      "Hyderabad": {
+        "p10": 5.85,
+        "p50": 7.84,
+        "p90": 9.72,
+        "count": 1479
+      },
+      "Mumbai": {
+        "p10": 5.63,
+        "p50": 7.67,
+        "p90": 9.75,
+        "count": 1472
+      },
+      "Pune": {
+        "p10": 5.66,
+        "p50": 7.83,
+        "p90": 9.82,
+        "count": 1519
+      }
+    }
+  },
+  "charging_type_profile": {
+    "home": {
+      "median_duration_min": 299.58,
+      "median_energy_kwh": 4.18,
+      "implied_avg_power_kw": 0.88,
+      "p95_cap_power_kw": 1.98,
+      "sample_count": 3292
+    },
+    "public_fast": {
+      "median_duration_min": 60.16,
+      "median_energy_kwh": 4.1,
+      "implied_avg_power_kw": 4.75,
+      "p95_cap_power_kw": 12.56,
+      "sample_count": 3296
+    },
+    "public_slow": {
+      "median_duration_min": 180.47,
+      "median_energy_kwh": 4.23,
+      "implied_avg_power_kw": 1.49,
+      "p95_cap_power_kw": 3.39,
+      "sample_count": 3386
+    }
+  },
+  "vehicle_type_profile": {
+    "Four-Wheeler": {
+      "median_battery_capacity_kwh": 39.98,
+      "median_kwh_per_km": 0.1657,
+      "sample_count": 2150
+    },
+    "Three-Wheeler": {
+      "median_battery_capacity_kwh": 7.99,
+      "median_kwh_per_km": 0.1672,
+      "sample_count": 3132
+    },
+    "Two-Wheeler": {
+      "median_battery_capacity_kwh": 2.99,
+      "median_kwh_per_km": 0.1657,
+      "sample_count": 5329
+    }
+  },
+  "charging_station_distance_km_per_city": {
+    "Ahmedabad": {
+      "p10": 0.21,
+      "p50": 1.36,
+      "p90": 4.48
+    },
+    "Bangalore": {
+      "p10": 0.21,
+      "p50": 1.39,
+      "p90": 4.6
+    },
+    "Chennai": {
+      "p10": 0.2,
+      "p50": 1.42,
+      "p90": 4.56
+    },
+    "Delhi": {
+      "p10": 0.2,
+      "p50": 1.43,
+      "p90": 4.68
+    },
+    "Hyderabad": {
+      "p10": 0.21,
+      "p50": 1.36,
+      "p90": 4.55
+    },
+    "Mumbai": {
+      "p10": 0.26,
+      "p50": 1.46,
+      "p90": 4.56
+    },
+    "Pune": {
+      "p10": 0.24,
+      "p50": 1.38,
+      "p90": 4.32
+    }
+  },
+  "range_anxiety_risk_share_per_city": {
+    "Ahmedabad": {
+      "Low": 0.7582,
+      "High": 0.2418
+    },
+    "Bangalore": {
+      "Low": 0.7604,
+      "High": 0.2396
+    },
+    "Chennai": {
+      "Low": 0.7522,
+      "High": 0.2478
+    },
+    "Delhi": {
+      "Low": 0.7446,
+      "High": 0.2554
+    },
+    "Hyderabad": {
+      "Low": 0.7678,
+      "High": 0.2322
+    },
+    "Mumbai": {
+      "Low": 0.7469,
+      "High": 0.2531
+    },
+    "Pune": {
+      "Low": 0.7541,
+      "High": 0.2459
+    }
+  }
+}

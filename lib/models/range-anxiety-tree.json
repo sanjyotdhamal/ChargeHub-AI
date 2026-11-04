@@ -1,0 +1,648 @@
+{
+  "model_name": "range_anxiety_decision_tree",
+  "max_depth": 5,
+  "features": [
+    "battery_capacity_kwh",
+    "battery_health_pct",
+    "range_km_estimated",
+    "charging_station_distance_km",
+    "vehicle_type_Four-Wheeler",
+    "vehicle_type_Three-Wheeler",
+    "vehicle_type_Two-Wheeler"
+  ],
+  "classes": [
+    "0",
+    "1"
+  ],
+  "root": {
+    "node_id": 0,
+    "is_leaf": false,
+    "feature": "charging_station_distance_km",
+    "threshold": 3.015,
+    "samples": 10611,
+    "class_probabilities": {
+      "0": 0.7555,
+      "1": 0.2445
+    },
+    "predicted_class": "0",
+    "left": {
+      "node_id": 1,
+      "is_leaf": false,
+      "feature": "battery_health_pct",
+      "threshold": 75.005,
+      "samples": 8323,
+      "class_probabilities": {
+        "0": 0.8585,
+        "1": 0.1415
+      },
+      "predicted_class": "0",
+      "left": {
+        "node_id": 2,
+        "is_leaf": false,
+        "feature": "range_km_estimated",
+        "threshold": 47.17,
+        "samples": 368,
+        "class_probabilities": {
+          "0": 0.1793,
+          "1": 0.8207
+        },
+        "predicted_class": "1",
+        "left": {
+          "node_id": 3,
+          "is_leaf": false,
+          "feature": "battery_capacity_kwh",
+          "threshold": 7.235,
+          "samples": 260,
+          "class_probabilities": {
+            "0": 0.0846,
+            "1": 0.9154
+          },
+          "predicted_class": "1",
+          "left": {
+            "node_id": 4,
+            "is_leaf": false,
+            "feature": "battery_health_pct",
+            "threshold": 73.09,
+            "samples": 211,
+            "class_probabilities": {
+              "0": 0.0569,
+              "1": 0.9431
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 5,
+              "is_leaf": true,
+              "samples": 118,
+              "class_probabilities": {
+                "0": 0.0169,
+                "1": 0.9831
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 6,
+              "is_leaf": true,
+              "samples": 93,
+              "class_probabilities": {
+                "0": 0.1075,
+                "1": 0.8925
+              },
+              "predicted_class": "1"
+            }
+          },
+          "right": {
+            "node_id": 7,
+            "is_leaf": false,
+            "feature": "battery_capacity_kwh",
+            "threshold": 8.035,
+            "samples": 49,
+            "class_probabilities": {
+              "0": 0.2041,
+              "1": 0.7959
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 8,
+              "is_leaf": true,
+              "samples": 28,
+              "class_probabilities": {
+                "0": 0.2857,
+                "1": 0.7143
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 9,
+              "is_leaf": true,
+              "samples": 21,
+              "class_probabilities": {
+                "0": 0.0952,
+                "1": 0.9048
+              },
+              "predicted_class": "1"
+            }
+          }
+        },
+        "right": {
+          "node_id": 10,
+          "is_leaf": false,
+          "feature": "battery_health_pct",
+          "threshold": 71.695,
+          "samples": 108,
+          "class_probabilities": {
+            "0": 0.4074,
+            "1": 0.5926
+          },
+          "predicted_class": "1",
+          "left": {
+            "node_id": 11,
+            "is_leaf": true,
+            "samples": 29,
+            "class_probabilities": {
+              "0": 0.5862,
+              "1": 0.4138
+            },
+            "predicted_class": "0"
+          },
+          "right": {
+            "node_id": 12,
+            "is_leaf": false,
+            "feature": "battery_health_pct",
+            "threshold": 73.525,
+            "samples": 79,
+            "class_probabilities": {
+              "0": 0.3418,
+              "1": 0.6582
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 13,
+              "is_leaf": true,
+              "samples": 29,
+              "class_probabilities": {
+                "0": 0.1724,
+                "1": 0.8276
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 14,
+              "is_leaf": true,
+              "samples": 50,
+              "class_probabilities": {
+                "0": 0.44,
+                "1": 0.56
+              },
+              "predicted_class": "1"
+            }
+          }
+        }
+      },
+      "right": {
+        "node_id": 15,
+        "is_leaf": false,
+        "feature": "battery_health_pct",
+        "threshold": 87.035,
+        "samples": 7955,
+        "class_probabilities": {
+          "0": 0.8899,
+          "1": 0.1101
+        },
+        "predicted_class": "0",
+        "left": {
+          "node_id": 16,
+          "is_leaf": false,
+          "feature": "range_km_estimated",
+          "threshold": 41.525,
+          "samples": 2976,
+          "class_probabilities": {
+            "0": 0.7812,
+            "1": 0.2188
+          },
+          "predicted_class": "0",
+          "left": {
+            "node_id": 17,
+            "is_leaf": false,
+            "feature": "battery_health_pct",
+            "threshold": 81.575,
+            "samples": 1792,
+            "class_probabilities": {
+              "0": 0.6724,
+              "1": 0.3276
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 18,
+              "is_leaf": true,
+              "samples": 769,
+              "class_probabilities": {
+                "0": 0.5878,
+                "1": 0.4122
+              },
+              "predicted_class": "0"
+            },
+            "right": {
+              "node_id": 19,
+              "is_leaf": true,
+              "samples": 1023,
+              "class_probabilities": {
+                "0": 0.7361,
+                "1": 0.2639
+              },
+              "predicted_class": "0"
+            }
+          },
+          "right": {
+            "node_id": 20,
+            "is_leaf": false,
+            "feature": "vehicle_type_Three-Wheeler",
+            "threshold": 0.5,
+            "samples": 1184,
+            "class_probabilities": {
+              "0": 0.9459,
+              "1": 0.0541
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 21,
+              "is_leaf": true,
+              "samples": 626,
+              "class_probabilities": {
+                "0": 0.9968,
+                "1": 0.0032
+              },
+              "predicted_class": "0"
+            },
+            "right": {
+              "node_id": 22,
+              "is_leaf": true,
+              "samples": 558,
+              "class_probabilities": {
+                "0": 0.8889,
+                "1": 0.1111
+              },
+              "predicted_class": "0"
+            }
+          }
+        },
+        "right": {
+          "node_id": 23,
+          "is_leaf": false,
+          "feature": "battery_health_pct",
+          "threshold": 95.155,
+          "samples": 4979,
+          "class_probabilities": {
+            "0": 0.9548,
+            "1": 0.0452
+          },
+          "predicted_class": "0",
+          "left": {
+            "node_id": 24,
+            "is_leaf": false,
+            "feature": "battery_capacity_kwh",
+            "threshold": 3.795,
+            "samples": 2808,
+            "class_probabilities": {
+              "0": 0.9277,
+              "1": 0.0723
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 25,
+              "is_leaf": true,
+              "samples": 1306,
+              "class_probabilities": {
+                "0": 0.8767,
+                "1": 0.1233
+              },
+              "predicted_class": "0"
+            },
+            "right": {
+              "node_id": 26,
+              "is_leaf": true,
+              "samples": 1502,
+              "class_probabilities": {
+                "0": 0.972,
+                "1": 0.028
+              },
+              "predicted_class": "0"
+            }
+          },
+          "right": {
+            "node_id": 27,
+            "is_leaf": false,
+            "feature": "range_km_estimated",
+            "threshold": 39.58,
+            "samples": 2171,
+            "class_probabilities": {
+              "0": 0.9899,
+              "1": 0.0101
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 28,
+              "is_leaf": true,
+              "samples": 1231,
+              "class_probabilities": {
+                "0": 0.9838,
+                "1": 0.0162
+              },
+              "predicted_class": "0"
+            },
+            "right": {
+              "node_id": 29,
+              "is_leaf": true,
+              "samples": 940,
+              "class_probabilities": {
+                "0": 0.9979,
+                "1": 0.0021
+              },
+              "predicted_class": "0"
+            }
+          }
+        }
+      }
+    },
+    "right": {
+      "node_id": 30,
+      "is_leaf": false,
+      "feature": "battery_capacity_kwh",
+      "threshold": 7.435,
+      "samples": 2288,
+      "class_probabilities": {
+        "0": 0.3811,
+        "1": 0.6189
+      },
+      "predicted_class": "1",
+      "left": {
+        "node_id": 31,
+        "is_leaf": false,
+        "feature": "range_km_estimated",
+        "threshold": 34.76,
+        "samples": 1371,
+        "class_probabilities": {
+          "0": 0.1882,
+          "1": 0.8118
+        },
+        "predicted_class": "1",
+        "left": {
+          "node_id": 32,
+          "is_leaf": false,
+          "feature": "battery_health_pct",
+          "threshold": 94.895,
+          "samples": 1183,
+          "class_probabilities": {
+            "0": 0.1496,
+            "1": 0.8504
+          },
+          "predicted_class": "1",
+          "left": {
+            "node_id": 33,
+            "is_leaf": false,
+            "feature": "range_km_estimated",
+            "threshold": 20.76,
+            "samples": 862,
+            "class_probabilities": {
+              "0": 0.1195,
+              "1": 0.8805
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 34,
+              "is_leaf": true,
+              "samples": 740,
+              "class_probabilities": {
+                "0": 0.0986,
+                "1": 0.9014
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 35,
+              "is_leaf": true,
+              "samples": 122,
+              "class_probabilities": {
+                "0": 0.2459,
+                "1": 0.7541
+              },
+              "predicted_class": "1"
+            }
+          },
+          "right": {
+            "node_id": 36,
+            "is_leaf": false,
+            "feature": "battery_capacity_kwh",
+            "threshold": 2.81,
+            "samples": 321,
+            "class_probabilities": {
+              "0": 0.2305,
+              "1": 0.7695
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 37,
+              "is_leaf": true,
+              "samples": 114,
+              "class_probabilities": {
+                "0": 0.1228,
+                "1": 0.8772
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 38,
+              "is_leaf": true,
+              "samples": 207,
+              "class_probabilities": {
+                "0": 0.2899,
+                "1": 0.7101
+              },
+              "predicted_class": "1"
+            }
+          }
+        },
+        "right": {
+          "node_id": 39,
+          "is_leaf": false,
+          "feature": "battery_health_pct",
+          "threshold": 80.76,
+          "samples": 188,
+          "class_probabilities": {
+            "0": 0.4309,
+            "1": 0.5691
+          },
+          "predicted_class": "1",
+          "left": {
+            "node_id": 40,
+            "is_leaf": true,
+            "samples": 33,
+            "class_probabilities": {
+              "0": 0.0909,
+              "1": 0.9091
+            },
+            "predicted_class": "1"
+          },
+          "right": {
+            "node_id": 41,
+            "is_leaf": false,
+            "feature": "range_km_estimated",
+            "threshold": 44.95,
+            "samples": 155,
+            "class_probabilities": {
+              "0": 0.5032,
+              "1": 0.4968
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 42,
+              "is_leaf": true,
+              "samples": 130,
+              "class_probabilities": {
+                "0": 0.4385,
+                "1": 0.5615
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 43,
+              "is_leaf": true,
+              "samples": 25,
+              "class_probabilities": {
+                "0": 0.84,
+                "1": 0.16
+              },
+              "predicted_class": "0"
+            }
+          }
+        }
+      },
+      "right": {
+        "node_id": 44,
+        "is_leaf": false,
+        "feature": "battery_health_pct",
+        "threshold": 81.65,
+        "samples": 917,
+        "class_probabilities": {
+          "0": 0.6696,
+          "1": 0.3304
+        },
+        "predicted_class": "0",
+        "left": {
+          "node_id": 45,
+          "is_leaf": false,
+          "feature": "battery_health_pct",
+          "threshold": 76.155,
+          "samples": 145,
+          "class_probabilities": {
+            "0": 0.3103,
+            "1": 0.6897
+          },
+          "predicted_class": "1",
+          "left": {
+            "node_id": 46,
+            "is_leaf": true,
+            "samples": 39,
+            "class_probabilities": {
+              "0": 0.0513,
+              "1": 0.9487
+            },
+            "predicted_class": "1"
+          },
+          "right": {
+            "node_id": 47,
+            "is_leaf": false,
+            "feature": "battery_capacity_kwh",
+            "threshold": 37.0,
+            "samples": 106,
+            "class_probabilities": {
+              "0": 0.4057,
+              "1": 0.5943
+            },
+            "predicted_class": "1",
+            "left": {
+              "node_id": 48,
+              "is_leaf": true,
+              "samples": 72,
+              "class_probabilities": {
+                "0": 0.3194,
+                "1": 0.6806
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 49,
+              "is_leaf": true,
+              "samples": 34,
+              "class_probabilities": {
+                "0": 0.5882,
+                "1": 0.4118
+              },
+              "predicted_class": "0"
+            }
+          }
+        },
+        "right": {
+          "node_id": 50,
+          "is_leaf": false,
+          "feature": "range_km_estimated",
+          "threshold": 57.21,
+          "samples": 772,
+          "class_probabilities": {
+            "0": 0.737,
+            "1": 0.263
+          },
+          "predicted_class": "0",
+          "left": {
+            "node_id": 51,
+            "is_leaf": false,
+            "feature": "battery_health_pct",
+            "threshold": 89.72,
+            "samples": 377,
+            "class_probabilities": {
+              "0": 0.618,
+              "1": 0.382
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 52,
+              "is_leaf": true,
+              "samples": 154,
+              "class_probabilities": {
+                "0": 0.487,
+                "1": 0.513
+              },
+              "predicted_class": "1"
+            },
+            "right": {
+              "node_id": 53,
+              "is_leaf": true,
+              "samples": 223,
+              "class_probabilities": {
+                "0": 0.7085,
+                "1": 0.2915
+              },
+              "predicted_class": "0"
+            }
+          },
+          "right": {
+            "node_id": 54,
+            "is_leaf": false,
+            "feature": "battery_health_pct",
+            "threshold": 89.345,
+            "samples": 395,
+            "class_probabilities": {
+              "0": 0.8506,
+              "1": 0.1494
+            },
+            "predicted_class": "0",
+            "left": {
+              "node_id": 55,
+              "is_leaf": true,
+              "samples": 162,
+              "class_probabilities": {
+                "0": 0.716,
+                "1": 0.284
+              },
+              "predicted_class": "0"
+            },
+            "right": {
+              "node_id": 56,
+              "is_leaf": true,
+              "samples": 233,
+              "class_probabilities": {
+                "0": 0.9442,
+                "1": 0.0558
+              },
+              "predicted_class": "0"
+            }
+          }
+        }
+      }
+    }
+  },
+  "metadata": {
+    "dataset": "EV_Usage_Dataset_v2.csv",
+    "created_at": "2026-11-04T10:52:39.364845+00:00",
+    "accuracy": 0.854
+  }
+}

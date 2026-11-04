@@ -1,0 +1,55 @@
+{
+  "model_type": "DecisionTreeClassifier",
+  "max_depth": 5,
+  "features": [
+    "battery_capacity_kwh",
+    "battery_health_pct",
+    "range_km_estimated",
+    "charging_station_distance_km",
+    "vehicle_type_Four-Wheeler",
+    "vehicle_type_Three-Wheeler",
+    "vehicle_type_Two-Wheeler"
+  ],
+  "classes": [
+    "0",
+    "1"
+  ],
+  "metrics": {
+    "test_accuracy": 0.854,
+    "cv_5fold_scores": [
+      0.8648,
+      0.8596,
+      0.8582,
+      0.8563,
+      0.8652
+    ],
+    "cv_5fold_mean": 0.8608,
+    "cv_5fold_std": 0.0036,
+    "confusion_matrix": [
+      [
+        1527,
+        77
+      ],
+      [
+        233,
+        286
+      ]
+    ],
+    "feature_importances": {
+      "battery_capacity_kwh": 0.1483,
+      "battery_health_pct": 0.3142,
+      "range_km_estimated": 0.0966,
+      "charging_station_distance_km": 0.4373,
+      "vehicle_type_Four-Wheeler": 0.0,
+      "vehicle_type_Three-Wheeler": 0.0037,
+      "vehicle_type_Two-Wheeler": 0.0
+    }
+  },
+  "dataset_metadata": {
+    "dataset_name": "EV_Usage_Dataset_v2.csv",
+    "total_samples": 10611,
+    "training_samples": 8488,
+    "test_samples": 2123,
+    "trained_at": "2026-11-04T10:52:39.362484+00:00"
+  }
+}
