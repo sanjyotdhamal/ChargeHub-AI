@@ -324,6 +324,11 @@ type AppContextType = {
   deductWalletMoney: (amount: number) => boolean;
   isSplashActive: boolean;
   setIsSplashActive: (active: boolean) => void;
+  // Manual range info (used when no vehicle is linked to the app)
+  manualRangeKm: number | null;
+  setManualRangeKm: (km: number | null) => void;
+  manualBatteryCapacityKwh: number | null;
+  setManualBatteryCapacityKwh: (kwh: number | null) => void;
 };
 
 const DEFAULT_VEHICLE: VehicleProfile = {
@@ -353,6 +358,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [batteryPercent, setBatteryPercent] = useState<number>(30);
   const [isSplashActive, setIsSplashActive] = useState<boolean>(false);
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  // Manual range info (used when no vehicle is linked to the app)
+  const [manualRangeKm, setManualRangeKm] = useState<number | null>(null);
+  const [manualBatteryCapacityKwh, setManualBatteryCapacityKwh] = useState<number | null>(null);
 
   const prevUserRef = useRef<string | null>(null);
 
@@ -523,6 +531,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deductWalletMoney,
         isSplashActive,
         setIsSplashActive,
+        manualRangeKm,
+        setManualRangeKm,
+        manualBatteryCapacityKwh,
+        setManualBatteryCapacityKwh,
       }}
     >
       {children}

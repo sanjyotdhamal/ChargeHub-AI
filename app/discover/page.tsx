@@ -4,13 +4,17 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Search,
-  Wallet,
   SlidersHorizontal,
   MapPin,
   Navigation,
   X,
   AlertCircle,
   RefreshCw,
+  BatteryWarning,
+  BatteryCharging,
+  ChevronRight,
+  Zap,
+  CheckCircle2,
 } from "lucide-react";
 import { useStations } from "@/context/StationsContext";
 import { scoreAllStations, scoreStation, ScoredStation } from "@/lib/scoring";
@@ -22,6 +26,7 @@ import { StationMapSkeleton } from "@/components/StationSkeleton";
 import BatterySlider from "@/components/BatterySlider";
 import FilterChips, { FilterOption } from "@/components/FilterChips";
 import BottomSheet from "@/components/BottomSheet";
+import RangeSetupCard from "@/components/RangeSetupCard";
 
 // Haversine formula to calculate distance between two GPS coordinates in km
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -105,7 +110,7 @@ async function geocodePlace(query: string): Promise<{ lat: number; lng: number; 
 }
 
 export default function DiscoverPage() {
-  const { walletBalance, batteryPercent, userProfile } = useApp();
+  const { batteryPercent, setBatteryPercent, userProfile, manualRangeKm } = useApp();
   const { activeVehicle, hasVehicle } = useVehicles();
   const { user } = useAuth();
   const {
@@ -124,6 +129,11 @@ export default function DiscoverPage() {
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
   const [showSlider, setShowSlider] = useState(false);
+  const [showRangeSetup, setShowRangeSetup] = useState(false);
+  const [rangeBannerDismissed, setRangeBannerDismissed] = useState(false);
+  // Battery popup — open by default every time the page mounts
+  const [showBatteryPopup, setShowBatteryPopup] = useState(true);
+  const [batteryInput, setBatteryInput] = useState<string>(String(batteryPercent));
 
   // Location State
   const [locationState, setLocationState] = useState<LocationState>({
@@ -396,6 +406,29 @@ export default function DiscoverPage() {
   const isLocating = locationState.status === "requesting";
   const isLive = locationState.status === "granted";
 
+  // ── Range Reachability ──
+  // Use vehicle claimed range if linked, else user's manually entered range
+  const effectiveRangeKm = useMemo<number | null>(() => {
+    if (activeVehicle?.claimedRangeKm) return activeVehicle.claimedRangeKm;
+    if (manualRangeKm && manualRangeKm > 0) return manualRangeKm;
+    return null;
+  }, [activeVehicle, manualRangeKm]);
+
+  // Estimated km reachable at current battery %
+  const estimatedReachableKm = useMemo<number | null>(() => {
+    if (!effectiveRangeKm) return null;
+    return Math.round((batteryPercent / 100) * effectiveRangeKm);
+  }, [effectiveRangeKm, batteryPercent]);
+
+  // Count how many nearby stations are unreachable
+  const unreachableCount = useMemo(() => {
+    if (!estimatedReachableKm) return 0;
+    return displayListStations.filter((st) => st.distanceKm > estimatedReachableKm).length;
+  }, [displayListStations, estimatedReachableKm]);
+
+  // Show "Enter Range" nudge when: no vehicle linked AND no manual range set AND not dismissed
+  const showRangeNudge = !hasVehicle && !manualRangeKm && !rangeBannerDismissed;
+
   return (
     <div className="relative w-full h-full flex flex-col bg-[#F4F6F9] overflow-hidden select-none">
       {/* ── Top Floating Header Bar ── */}
@@ -425,17 +458,138 @@ export default function DiscoverPage() {
             </div>
           </Link>
 
-          {/* Wallet Balance Badge */}
-          <Link
-            href="/wallet"
-            className="bg-[#7EF000] border border-lime-400 text-slate-950 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm hover:scale-105 transition-transform shrink-0"
+          {/* Battery % Button — tap to open popup */}
+          <button
+            onClick={() => {
+              setBatteryInput(String(batteryPercent));
+              setShowBatteryPopup(true);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-black text-xs shadow-sm hover:scale-105 transition-all shrink-0 cursor-pointer ${
+              batteryPercent <= 20
+                ? "bg-red-500 border-red-400 text-white"
+                : batteryPercent <= 40
+                ? "bg-amber-400 border-amber-400 text-slate-950"
+                : "bg-[#7EF000] border-lime-400 text-slate-950"
+            }`}
+            title="Tap to update battery %"
           >
-            <Wallet size={14} className="text-slate-950" />
-            <span className="text-xs font-black text-slate-950">
-              ₹{walletBalance.toLocaleString("en-IN")}
-            </span>
-          </Link>
+            <BatteryCharging size={14} strokeWidth={2.5} />
+            <span>{batteryPercent}%</span>
+          </button>
         </div>
+
+        {/* ── Battery % Quick Update Popup ── */}
+        {showBatteryPopup && (
+          <div className="bg-white border-2 border-[#7EF000] rounded-2xl px-4 py-3.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#7EF000] border border-lime-400 flex items-center justify-center shrink-0">
+                  <BatteryCharging size={15} className="text-slate-950" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-slate-950">Current Battery Level</p>
+                  <p className="text-[9px] text-slate-500 font-bold">Update every time you charge or drive</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBatteryPopup(false)}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {/* Large % display */}
+            <div className="flex items-center justify-center gap-4 py-1">
+              <button
+                onClick={() => {
+                  const v = Math.max(5, Number(batteryInput) - 5);
+                  setBatteryInput(String(v));
+                }}
+                className="w-10 h-10 rounded-full bg-slate-100 text-slate-800 font-black text-lg hover:bg-slate-200 active:scale-90 transition-all cursor-pointer border border-slate-200 flex items-center justify-center"
+              >
+                −
+              </button>
+
+              <div className="text-center">
+                <span
+                  className={`text-4xl font-black tabular-nums ${
+                    Number(batteryInput) <= 20
+                      ? "text-red-500"
+                      : Number(batteryInput) <= 40
+                      ? "text-amber-500"
+                      : "text-slate-950"
+                  }`}
+                >
+                  {batteryInput}
+                </span>
+                <span className="text-xl font-black text-slate-400">%</span>
+                {manualRangeKm && (
+                  <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                    ~{Math.round((Number(batteryInput) / 100) * manualRangeKm)} km reach
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  const v = Math.min(100, Number(batteryInput) + 5);
+                  setBatteryInput(String(v));
+                }}
+                className="w-10 h-10 rounded-full bg-slate-100 text-slate-800 font-black text-lg hover:bg-slate-200 active:scale-90 transition-all cursor-pointer border border-slate-200 flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Slider */}
+            <input
+              type="range"
+              min={5}
+              max={100}
+              step={1}
+              value={batteryInput}
+              onChange={(e) => setBatteryInput(e.target.value)}
+              className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-[#7EF000] bg-slate-200"
+            />
+
+            <div className="flex justify-between text-[9px] text-slate-400 font-bold px-0.5">
+              <span>5% — Critical</span>
+              <span>50% — Half</span>
+              <span>100% — Full</span>
+            </div>
+
+            {/* Quick presets */}
+            <div className="flex gap-2">
+              {[10, 25, 50, 75, 100].map((pct) => (
+                <button
+                  key={pct}
+                  onClick={() => setBatteryInput(String(pct))}
+                  className={`flex-1 py-1.5 rounded-xl text-[10px] font-black border transition-all cursor-pointer ${
+                    Number(batteryInput) === pct
+                      ? "bg-[#7EF000] border-lime-400 text-slate-950 shadow-xs"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300"
+                  }`}
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
+
+            {/* Confirm */}
+            <button
+              onClick={() => {
+                const val = Math.max(5, Math.min(100, Number(batteryInput) || batteryPercent));
+                setBatteryPercent(val);
+                setShowBatteryPopup(false);
+              }}
+              className="w-full bg-[#0F172A] text-[#7EF000] font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 hover:bg-slate-800 active:scale-98 transition-all cursor-pointer border border-slate-800 shadow-sm"
+            >
+              <CheckCircle2 size={14} strokeWidth={2.5} />
+              Set Battery to {batteryInput}%
+            </button>
+          </div>
+        )}
 
         {/* ── Location Permission Prompt Banner ── */}
         {showLocationBanner && locationState.status === "default" && (
@@ -525,6 +679,69 @@ export default function DiscoverPage() {
             >
               Add EV
             </Link>
+          </div>
+        )}
+
+        {/* ── Range Nudge Banner: appears when no vehicle & no manual range set ── */}
+        {showRangeNudge && (
+          <div className="bg-white border-2 border-[#7EF000] rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-[#7EF000] flex items-center justify-center shrink-0 border border-lime-400">
+                <BatteryWarning size={15} className="text-slate-950" strokeWidth={2.5} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black text-slate-950">Enter Your EV Range</p>
+                <p className="text-[9px] text-slate-500 font-bold truncate">
+                  Warn when stations are out of reach at current battery
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setShowRangeSetup(true)}
+                className="bg-[#7EF000] text-slate-950 px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1 hover:bg-lime-400 active:scale-95 transition-all cursor-pointer border border-lime-400 shadow-xs"
+              >
+                <Zap size={11} strokeWidth={2.5} />
+                Set Range
+              </button>
+              <button
+                onClick={() => setRangeBannerDismissed(true)}
+                className="p-1.5 rounded-xl bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Range Setup Card (expanded) ── */}
+        {showRangeSetup && (
+          <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+            <RangeSetupCard onDismiss={() => setShowRangeSetup(false)} />
+          </div>
+        )}
+
+        {/* ── Range Warning: unreachable stations detected ── */}
+        {estimatedReachableKm !== null && unreachableCount > 0 && (
+          <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-300">
+            <div className="flex items-center gap-2 min-w-0">
+              <BatteryWarning size={16} className="text-rose-600 shrink-0 stroke-[2.5]" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-black text-rose-900">
+                  {unreachableCount} station{unreachableCount > 1 ? "s" : ""} unreachable at {batteryPercent}% battery
+                </p>
+                <p className="text-[9px] text-rose-700 font-bold">
+                  Estimated reach: ~{estimatedReachableKm} km · Marked ⚠ on map &amp; list
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowRangeSetup((p) => !p)}
+              className="text-[9px] font-black text-rose-700 bg-rose-100 border border-rose-200 px-2 py-1 rounded-xl shrink-0 flex items-center gap-1 cursor-pointer hover:bg-rose-200"
+            >
+              <ChevronRight size={11} />
+              Update
+            </button>
           </div>
         )}
 
@@ -628,6 +845,7 @@ export default function DiscoverPage() {
             onViewportChange={fetchViewportStations}
             isLocating={isLocating}
             shouldFitBounds={shouldFitBounds}
+            estimatedReachableKm={estimatedReachableKm}
           />
         )}
       </div>
@@ -643,6 +861,7 @@ export default function DiscoverPage() {
         onRetry={refreshStations}
         hasActiveFilters={activeFilter !== "all" || searchQuery.trim().length > 0}
         noStationsWithin50km={noStationsWithin50km}
+        estimatedReachableKm={estimatedReachableKm}
         onClearFilters={() => {
           setActiveFilter("all");
           setSearchQuery("");

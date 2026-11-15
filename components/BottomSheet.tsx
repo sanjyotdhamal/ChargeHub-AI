@@ -21,6 +21,7 @@ type BottomSheetProps = {
   onClearFilters?: () => void;
   hasActiveFilters?: boolean;
   noStationsWithin50km?: boolean;
+  estimatedReachableKm?: number | null;
 };
 
 export default function BottomSheet({
@@ -34,6 +35,7 @@ export default function BottomSheet({
   onClearFilters,
   hasActiveFilters = false,
   noStationsWithin50km = false,
+  estimatedReachableKm = null,
 }: BottomSheetProps) {
   // Snap states: "collapsed", "half", "full"
   const [snapState, setSnapState] = useState<"collapsed" | "half" | "full">("half");
@@ -132,14 +134,21 @@ export default function BottomSheet({
               {locationGranted ? "Nearby Hubs" : "All Network Hubs"} ({listStations.length})
             </div>
 
-            {listStations.map((station) => (
-              <StationCard
-                key={station.id}
-                station={station}
-                isSelected={selectedStation?.id === station.id}
-                onSelect={onSelectStation}
-              />
-            ))}
+            {listStations.map((station) => {
+              const isUnreachable =
+                estimatedReachableKm !== null &&
+                typeof station.distanceKm === "number" &&
+                station.distanceKm > estimatedReachableKm;
+              return (
+                <StationCard
+                  key={station.id}
+                  station={station}
+                  isSelected={selectedStation?.id === station.id}
+                  onSelect={onSelectStation}
+                  isUnreachable={isUnreachable}
+                />
+              );
+            })}
 
             {stations.length === 0 && (
               <div className="py-8 flex flex-col items-center justify-center text-center p-4">

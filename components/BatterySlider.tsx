@@ -12,7 +12,7 @@ type BatterySliderProps = {
 };
 
 export default function BatterySlider({ nearestStationKm: propNearestKm }: BatterySliderProps = {}) {
-  const { batteryPercent, setBatteryPercent } = useApp();
+  const { batteryPercent, setBatteryPercent, manualRangeKm } = useApp();
   const { activeVehicle, effectiveVehicle } = useVehicles();
   const { stations } = useStations();
   const [vehicleType, setVehicleType] = useState<"car" | "bike" | "truck">("car");
@@ -80,7 +80,11 @@ export default function BatterySlider({ nearestStationKm: propNearestKm }: Batte
     ? "Commercial EV"
     : "Standard Electric Car";
 
-  const claimedRange = activeVehicle?.claimedRangeKm || (vehicleType === "bike" ? 120 : 320);
+  // Use vehicle claimed range if linked, else manual range, else sensible default
+  const claimedRange =
+    activeVehicle?.claimedRangeKm ||
+    manualRangeKm ||
+    (vehicleType === "bike" ? 120 : 320);
   const estimatedRemainingKm = Math.round((batteryPercent / 100) * claimedRange);
 
   return (

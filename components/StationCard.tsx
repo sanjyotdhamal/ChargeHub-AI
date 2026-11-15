@@ -2,16 +2,17 @@
 
 import React from "react";
 import Link from "next/link";
-import { MapPin, Zap, Clock, ChevronRight } from "lucide-react";
+import { MapPin, Zap, Clock, ChevronRight, BatteryWarning } from "lucide-react";
 import { ScoredStation } from "@/lib/scoring";
 
 type StationCardProps = {
   station: ScoredStation;
   isSelected?: boolean;
   onSelect: (station: ScoredStation) => void;
+  isUnreachable?: boolean;
 };
 
-export default function StationCard({ station, isSelected, onSelect }: StationCardProps) {
+export default function StationCard({ station, isSelected, onSelect, isUnreachable = false }: StationCardProps) {
   const getNetworkBadge = (network: string) => {
     if (network.includes("Tata")) return "bg-teal-100 text-teal-900 border-teal-300";
     if (network.includes("Statiq")) return "bg-orange-100 text-orange-900 border-orange-300";
@@ -26,7 +27,9 @@ export default function StationCard({ station, isSelected, onSelect }: StationCa
     <div
       onClick={() => onSelect(station)}
       className={`w-full bg-white border-2 rounded-3xl p-3.5 cursor-pointer transition-all duration-200 ${
-        isSelected
+        isUnreachable
+          ? "border-orange-200 opacity-70 hover:opacity-90"
+          : isSelected
           ? "border-[#7EF000] ring-2 ring-[#7EF000]/40 shadow-[0_8px_25px_rgba(126,240,0,0.25)]"
           : "border-slate-200 shadow-[0_4px_20px_rgba(0,0,0,0.04)] hover:border-slate-300 hover:shadow-md"
       }`}
@@ -55,7 +58,7 @@ export default function StationCard({ station, isSelected, onSelect }: StationCa
           <h4 className="text-xs font-black text-slate-950 truncate">{station.name}</h4>
           {station.isSimulated && (
             <span className="text-[9px] font-bold text-amber-600 block mt-0.5">
-              Price & availability are simulated
+              Price &amp; availability are simulated
             </span>
           )}
         </div>
@@ -69,6 +72,15 @@ export default function StationCard({ station, isSelected, onSelect }: StationCa
           </span>
         </div>
       </div>
+
+      {/* Unreachable Warning Row */}
+      {isUnreachable && (
+        <div className="flex items-center gap-1.5 text-[10px] font-black text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-2.5 py-1 mb-2">
+          <BatteryWarning size={13} strokeWidth={2.5} />
+          <span>⚠ Out of range at current battery</span>
+          <span className="ml-auto text-orange-600 font-bold">{station.distanceKm} km away</span>
+        </div>
+      )}
 
       {/* Info row */}
       <div className="flex items-center justify-between text-[11px] text-slate-800 pt-2 border-t border-slate-100">

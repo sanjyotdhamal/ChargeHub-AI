@@ -106,17 +106,23 @@ function createSmallMarkerIcon(
     isSimulated?: boolean;
     waitMinutes?: number;
   },
-  isSelected: boolean
+  isSelected: boolean,
+  isUnreachable = false
 ): google.maps.Icon {
   const brand = getCanonicalBrand(station.network);
-  const brandColor = getBrandColor(station.network);
   const isFastDc = (station.speedKw ?? 0) >= 50;
   const isDemo = station.source === "Synthetic demo" || Boolean(station.isSimulated);
+
+  // Unreachable: greyed-out brand, red-orange ring
+  const brandColor = isUnreachable ? "#94A3B8" : getBrandColor(station.network);
 
   // Status color
   let statusColor = "#22C55E"; // Green = available
   let statusKey = "avail";
-  if (!station.available) {
+  if (isUnreachable) {
+    statusColor = "#F97316"; // Orange = out of range
+    statusKey = "unreachable";
+  } else if (!station.available) {
     if ((station.waitMinutes ?? 0) > 0) {
       statusColor = "#EF4444"; // Red = occupied
       statusKey = "occ";
@@ -151,14 +157,24 @@ function createSmallMarkerIcon(
     ? `<circle cx="${center}" cy="${center}" r="11.5" fill="none" stroke="#7EF000" stroke-width="2"/>`
     : "";
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  // Unreachable: add a small warning "X" cross overlay instead of lightning bolt fill
+  const boltFill = isUnreachable ? "#FFFFFF88" : "#FFFFFF";
+
+  // Unreachable warning overlay (small ⚠ diagonal lines)
+  const unreachableOverlay = isUnreachable
+    ? `<line x1="${center - innerR + 2}" y1="${center - innerR + 2}" x2="${center + innerR - 2}" y2="${center + innerR - 2}" stroke="#FFF" stroke-width="1.5" opacity="0.9"/>
+       <line x1="${center + innerR - 2}" y1="${center - innerR + 2}" x2="${center - innerR + 2}" y2="${center + innerR - 2}" stroke="#FFF" stroke-width="1.5" opacity="0.9"/>`
+    : "";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" opacity="${isUnreachable ? 0.6 : 1}">
     ${halo}
     <!-- Status ring (solid for real, dashed for demo) -->
     <circle cx="${center}" cy="${center}" r="${outerR}" fill="#FFFFFF" stroke="${statusColor}" stroke-width="${strokeWidth}" ${strokeDash}/>
     <!-- Brand filled circle -->
     <circle cx="${center}" cy="${center}" r="${innerR}" fill="${brandColor}"/>
     <!-- Center white lightning bolt -->
-    <path d="${boltPath}" fill="#FFFFFF"/>
+    <path d="${boltPath}" fill="${boltFill}"/>
+    ${unreachableOverlay}
   </svg>`;
 
   const hasGoogleMaps = typeof window !== "undefined" && Boolean(window.google?.maps?.Size);
@@ -189,6 +205,8 @@ type StationMapProps = {
   onViewportChange?: (bbox: BBox) => void;
   isLocating?: boolean;
   shouldFitBounds?: boolean;
+  /** Estimated km reachable at current battery. Stations beyond this will show as unreachable. */
+  estimatedReachableKm?: number | null;
 };
 
 // Blue dot for user location
@@ -212,6 +230,7 @@ export default function StationMap({
   onViewportChange,
   isLocating = false,
   shouldFitBounds = false,
+  estimatedReachableKm = null,
 }: StationMapProps) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "") as string,
@@ -405,13 +424,18 @@ export default function StationMap({
         {/* Render ALL stations on map directly with small custom brand symbols */}
         {validStations.map((station) => {
           const isSelected = selectedStation?.id === station.id;
+          const isUnreachable =
+            estimatedReachableKm !== null &&
+            typeof station.distanceKm === "number" &&
+            station.distanceKm > estimatedReachableKm;
           return (
             <MarkerF
               key={String(station.id)}
               position={{ lat: station.lat, lng: station.lng }}
               onClick={() => onSelectStation(station)}
-              icon={createSmallMarkerIcon(station, isSelected)}
-              zIndex={isSelected ? 999 : 1}
+              icon={createSmallMarkerIcon(station, isSelected, isUnreachable)}
+              zIndex={isSelected ? 999 : isUnreachable ? 0 : 1}
+              opacity={isUnreachable ? 0.55 : 1}
             />
           );
         })}
@@ -459,6 +483,16 @@ export default function StationMap({
                 <span>·</span>
                 <span>₹{selectedStation.price}/kWh</span>
               </div>
+
+              {/* Unreachable warning */}
+              {estimatedReachableKm !== null &&
+                typeof selectedStation.distanceKm === "number" &&
+                selectedStation.distanceKm > estimatedReachableKm && (
+                  <div className="flex items-center gap-1 text-[10px] font-black text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-2 py-1 mb-2">
+                    <span>⚠</span>
+                    <span>Out of range — {selectedStation.distanceKm} km away, ~{estimatedReachableKm} km reach</span>
+                  </div>
+                )}
 
               <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
                 <div className="flex items-center gap-1 text-[10px] font-bold">
@@ -532,6 +566,10 @@ export default function StationMap({
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-400 bg-white" />
                   <span>Grey = Offline</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-orange-400 bg-slate-200 opacity-60" />
+                  <span className="text-orange-700 font-black">Orange = ⚠ Out of range</span>
                 </div>
               </div>
             </div>
