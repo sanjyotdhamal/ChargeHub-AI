@@ -159,10 +159,10 @@ export default function BottomSheet({
               </div>
             )}
 
-            {/* Open Charge Map Attribution Credit */}
+            {/* Attribution Credit */}
             <div className="pt-3 pb-4 text-center">
               <p className="text-[10px] text-slate-500 font-bold">
-                Station data:{" "}
+                Demo stations are synthetic and for presentation only. Real stations:{" "}
                 <a
                   href="https://openchargemap.org"
                   target="_blank"
@@ -171,7 +171,7 @@ export default function BottomSheet({
                 >
                   Open Charge Map contributors
                 </a>{" "}
-                (CC BY 4.0)
+                (CC BY 4.0).
               </p>
             </div>
           </>

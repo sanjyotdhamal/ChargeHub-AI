@@ -9,11 +9,13 @@
     "lint": "eslint",
     "seed:stations": "tsx scripts/seed-stations.ts",
     "import:ocm": "tsx scripts/import-ocm.ts",
-    "import:csv": "tsx scripts/import-csv-stations.ts"
+    "import:csv": "tsx scripts/import-csv-stations.ts",
+    "import:demo": "tsx scripts/import-demo-csv.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",
     "bcryptjs": "^3.0.3",
+    "csv-parse": "^5.6.0",
     "framer-motion": "^13.1.0",
     "jose": "^6.2.13",
     "lucide-react": "^1.31.0",

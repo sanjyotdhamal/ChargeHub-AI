@@ -57,8 +57,26 @@ export async function GET(req: NextRequest) {
       mongoFilter.speedKw = { $gte: queryData.minPowerKw };
     }
 
-    // Geospatial query using $nearSphere
-    if (queryData.lat !== undefined && queryData.lng !== undefined && queryData.radiusKm !== undefined) {
+    // Exclude demo stations when requested
+    if (queryData.excludeDemo) {
+      mongoFilter.source = { $ne: "Synthetic demo" };
+    }
+
+    // Geospatial query: Bounding box ($geoWithin $box) or $nearSphere
+    if (queryData.bbox) {
+      const parts = queryData.bbox.split(",").map((p) => parseFloat(p.trim()));
+      if (parts.length === 4 && parts.every((n) => !isNaN(n))) {
+        const [minLng, minLat, maxLng, maxLat] = parts;
+        mongoFilter.location = {
+          $geoWithin: {
+            $box: [
+              [minLng, minLat],
+              [maxLng, maxLat],
+            ],
+          },
+        };
+      }
+    } else if (queryData.lat !== undefined && queryData.lng !== undefined && queryData.radiusKm !== undefined) {
       const maxDistanceMeters = queryData.radiusKm * 1000;
       mongoFilter.location = {
         $nearSphere: {
@@ -71,8 +89,11 @@ export async function GET(req: NextRequest) {
       };
     }
 
+    // Cap each response at 500 stations
+    const responseLimit = Math.min(queryData.limit || 500, 500);
+
     const stationsDoc = await Station.find(mongoFilter)
-      .limit(queryData.limit)
+      .limit(responseLimit)
       .lean();
 
     const stations = stationsDoc.map(toStationDto);

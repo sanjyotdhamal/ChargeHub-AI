@@ -1,20 +1,33 @@
 "use client";
 
-import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from "@react-google-maps/api";
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF, MarkerClustererF } from "@react-google-maps/api";
 import { ScoredStation } from "@/lib/scoring";
 import Link from "next/link";
-import { ArrowRight, Crosshair, Navigation } from "lucide-react";
+import {
+  ArrowRight,
+  Crosshair,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Info,
+  Clock,
+  MapPin,
+  Star,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import { BBox } from "@/context/StationsContext";
 
 const containerStyle = {
   width: "100%",
   height: "100%",
 };
 
-// Default Center: Loni Kalbhor, Pune (18.4912 N, 74.0280 E)
+// Default Center: Pune (18.5204 N, 73.8567 E)
 const defaultCenter = {
-  lat: 18.4912,
-  lng: 74.0280,
+  lat: 18.5204,
+  lng: 73.8567,
 };
 
 // Clean standard Google Maps light skin
@@ -39,75 +52,163 @@ const googleMapLightStyle = [
   { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
 ];
 
-function getNetworkColor(network: string): string {
-  if (network.includes("Tata")) return "#0D9488"; // Teal
-  if (network.includes("Statiq")) return "#EA580C"; // Orange
-  if (network.includes("ChargeZone")) return "#2563EB"; // Blue
-  if (network.includes("Jio-bp")) return "#16A34A"; // Green
-  if (network.includes("Shell")) return "#F59E0B"; // Amber
-  if (network.includes("BPCL")) return "#1E40AF"; // Deep Blue
-  if (network.includes("Ather")) return "#06B6D4"; // Cyan
-  if (network.includes("Bolt")) return "#84CC16"; // Lime
-  return "#7EF000";
+/**
+ * Brand color palette (user's custom palette, not company logos):
+ * - Tata Power: blue
+ * - ChargeZone: teal
+ * - Jio-bp pulse: yellow-green
+ * - Statiq: orange
+ * - Zeon Charging: purple
+ */
+export const BRAND_COLORS: Record<string, string> = {
+  "Tata Power": "#2563EB",     // Blue
+  "ChargeZone": "#0D9488",     // Teal
+  "Jio-bp pulse": "#84CC16",   // Yellow-green
+  "Statiq": "#F97316",         // Orange
+  "Zeon Charging": "#9333EA",  // Purple
+};
+
+export function getBrandColor(network: string): string {
+  if (network.includes("Tata")) return BRAND_COLORS["Tata Power"];
+  if (network.includes("ChargeZone")) return BRAND_COLORS["ChargeZone"];
+  if (network.includes("Jio-bp") || network.includes("Jio")) return BRAND_COLORS["Jio-bp pulse"];
+  if (network.includes("Statiq")) return BRAND_COLORS["Statiq"];
+  if (network.includes("Zeon")) return BRAND_COLORS["Zeon Charging"];
+  return "#0EA5E9"; // Fallback sky blue
 }
 
-function getShortStationName(station: ScoredStation): string {
-  if (station.name.includes("MIT ADT")) return "MIT ADT Campus";
-  if (station.name.includes("Sanjay Service")) return "HPCL Sanjay";
-  if (station.name.includes("Shell")) return "Shell Recharge";
-  if (station.name.includes("Vishwaraj")) return "Vishwaraj Hosp";
-  if (station.name.includes("Highway Hypercharger")) return "Jio-bp Hyper";
-  if (station.name.includes("Rajendra")) return "BPCL Rajendra";
-  if (station.name.includes("Peace Dome")) return "Peace Dome";
-  if (station.name.includes("Kadamwakabasti")) return "Kadamwakabasti";
-  if (station.name.includes("Swastik")) return "IOCL Swastik";
-  if (station.name.includes("Ather")) return "Ather Grid";
-  if (station.name.includes("Bolt")) return "Bolt.Earth";
-  return station.network;
+export function getCanonicalBrand(network: string): string {
+  if (network.includes("Tata")) return "Tata Power";
+  if (network.includes("ChargeZone")) return "ChargeZone";
+  if (network.includes("Jio-bp") || network.includes("Jio")) return "Jio-bp pulse";
+  if (network.includes("Statiq")) return "Statiq";
+  if (network.includes("Zeon")) return "Zeon Charging";
+  return network;
 }
 
-function createStationMarkerSvg(station: ScoredStation, isSelected: boolean): string {
-  const brandColor = getNetworkColor(station.network);
-  const statusColor = station.available ? "#22C55E" : "#94A3B8";
+// In-memory icon cache by brand + status + isFastDc + isDemo
+const markerIconCache = new Map<string, google.maps.Icon>();
 
-  if (isSelected) {
-    const shortName = getShortStationName(station).replace("&", "&amp;");
-    const stats = `${station.speedKw}kW · ₹${station.price}`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="48" viewBox="0 0 144 48">
-      <defs>
-        <filter id="shadow-sel" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>
-        </filter>
-      </defs>
-      <g filter="url(#shadow-sel)">
-        <rect x="4" y="2" width="136" height="34" rx="17" fill="#0F172A" stroke="#7EF000" stroke-width="2.5"/>
-        <circle cx="20" cy="19" r="8.5" fill="${brandColor}"/>
-        <circle cx="20" cy="19" r="3.5" fill="${statusColor}"/>
-        <text x="34" y="16" font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif" font-weight="900" font-size="10.5" fill="#FFFFFF">${shortName}</text>
-        <text x="34" y="27" font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif" font-weight="800" font-size="9" fill="#7EF000">${stats}</text>
-        <polygon points="72,44 65,36 79,36" fill="#7EF000"/>
-      </g>
-    </svg>`;
-    return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+/**
+ * Generate custom SVG marker icon:
+ * - Circle in brand color
+ * - White lightning bolt
+ * - Status ring: green = available, red = occupied, grey = offline
+ * - 50 kW+ DC stations drawn slightly larger
+ * - Demo stations get dashed outline; real (Open Charge Map) stations get solid outline
+ */
+function createStationMarkerIcon(station: {
+  network: string;
+  available: boolean;
+  speedKw: number;
+  source?: string;
+  isSimulated?: boolean;
+  waitMinutes?: number;
+}): google.maps.Icon {
+  const brand = getCanonicalBrand(station.network);
+  const brandColor = getBrandColor(station.network);
+
+  const isFastDc = (station.speedKw ?? 0) >= 50;
+  const isDemo = station.source === "Synthetic demo" || Boolean(station.isSimulated);
+
+  // Status ring color
+  let statusColor = "#22C55E"; // green = available
+  let statusKey = "available";
+  if (!station.available) {
+    if ((station.waitMinutes ?? 0) > 0) {
+      statusColor = "#EF4444"; // red = occupied
+      statusKey = "occupied";
+    } else {
+      statusColor = "#94A3B8"; // grey = offline
+      statusKey = "offline";
+    }
   }
 
-  // Compact circular EV pin (38x44)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="44" viewBox="0 0 38 44">
+  const cacheKey = `${brand}_${statusKey}_${isFastDc ? "fast" : "std"}_${isDemo ? "demo" : "real"}`;
+
+  if (markerIconCache.has(cacheKey)) {
+    return markerIconCache.get(cacheKey)!;
+  }
+
+  // Dimensions: 50kW+ DC is drawn slightly larger
+  const size = isFastDc ? 42 : 34;
+  const center = size / 2;
+  const outerR = isFastDc ? 18.5 : 14.5;
+  const innerR = isFastDc ? 14 : 11;
+  const ringWidth = isFastDc ? 2.5 : 2;
+
+  // Dashed outline for demo stations; solid for real stations
+  const strokeDash = isDemo ? 'stroke-dasharray="3,3"' : "";
+
+  // White lightning bolt path centered
+  const boltPath = isFastDc
+    ? "M21 9 L15.5 21 L21 21 L18.5 31 L27 19.5 L21 19.5 Z"
+    : "M17 7.5 L12.5 17 L17 17 L15 25.5 L22 16 L17 16 Z";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <defs>
-      <filter id="shadow-pin" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.25"/>
+      <filter id="m-shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.3"/>
       </filter>
     </defs>
-    <g filter="url(#shadow-pin)">
-      <circle cx="19" cy="18" r="15" fill="#FFFFFF" stroke="${brandColor}" stroke-width="2.5"/>
-      <circle cx="19" cy="18" r="11" fill="${brandColor}"/>
-      <path d="M19 10 L14.5 18 L19 18 L17.5 25 L23.5 17 L19 17 Z" fill="#FFFFFF"/>
-      <polygon points="19,41 14,31 24,31" fill="${brandColor}"/>
-      <circle cx="29" cy="9" r="4" fill="${statusColor}" stroke="#FFFFFF" stroke-width="1.5"/>
+    <g filter="url(#m-shadow)">
+      <!-- Outer status ring (dashed for demo, solid for real) -->
+      <circle cx="${center}" cy="${center}" r="${outerR}" fill="#FFFFFF" stroke="${statusColor}" stroke-width="${ringWidth}" ${strokeDash}/>
+      <!-- Brand color filled circle -->
+      <circle cx="${center}" cy="${center}" r="${innerR}" fill="${brandColor}"/>
+      <!-- Center white lightning bolt -->
+      <path d="${boltPath}" fill="#FFFFFF"/>
     </g>
   </svg>`;
-  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+
+  const icon: google.maps.Icon = {
+    url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+    scaledSize: typeof window !== "undefined" && window.google?.maps?.Size
+      ? new window.google.maps.Size(size, size)
+      : undefined,
+    anchor: typeof window !== "undefined" && window.google?.maps?.Point
+      ? new window.google.maps.Point(center, center)
+      : undefined,
+  };
+
+  markerIconCache.set(cacheKey, icon);
+  return icon;
 }
+
+// Cluster bubble SVG in app theme (dark slate with lime border)
+const createClusterSvg = (size: number, bg: string, stroke: string) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 2.5}" fill="${bg}" stroke="${stroke}" stroke-width="3"/>
+  </svg>`;
+  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+};
+
+const clusterStyles = [
+  {
+    url: createClusterSvg(40, "#0F172A", "#7EF000"),
+    height: 40,
+    width: 40,
+    textColor: "#7EF000",
+    textSize: 12,
+    fontWeight: "900",
+  },
+  {
+    url: createClusterSvg(48, "#0F172A", "#7EF000"),
+    height: 48,
+    width: 48,
+    textColor: "#7EF000",
+    textSize: 13,
+    fontWeight: "900",
+  },
+  {
+    url: createClusterSvg(56, "#7EF000", "#0F172A"),
+    height: 56,
+    width: 56,
+    textColor: "#0F172A",
+    textSize: 14,
+    fontWeight: "900",
+  },
+];
 
 type UserLocation = { lat: number; lng: number };
 
@@ -116,15 +217,14 @@ type StationMapProps = {
   selectedStation: ScoredStation | null;
   onSelectStation: (station: ScoredStation) => void;
   userLocation?: UserLocation | null;
-  userLocationLabel?: string;
   onMapClick?: (coords: { lat: number; lng: number }) => void;
   onLiveLocationClick?: () => void;
+  onViewportChange?: (bbox: BBox) => void;
   isLocating?: boolean;
-  isSettingLocation?: boolean;
   shouldFitBounds?: boolean;
 };
 
-// SVG for "You are here" user dot
+// "You are here" user location blue dot
 function createUserDotSvg(): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
     <circle cx="19" cy="19" r="17" fill="#3B82F6" fill-opacity="0.22"/>
@@ -140,11 +240,10 @@ export default function StationMap({
   selectedStation,
   onSelectStation,
   userLocation,
-  userLocationLabel,
   onMapClick,
   onLiveLocationClick,
+  onViewportChange,
   isLocating = false,
-  isSettingLocation = false,
   shouldFitBounds = false,
 }: StationMapProps) {
   const { isLoaded, loadError } = useJsApiLoader({
@@ -153,8 +252,10 @@ export default function StationMap({
 
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [loadTimedOut, setLoadTimedOut] = useState<boolean>(false);
+  const [isLegendOpen, setIsLegendOpen] = useState<boolean>(false);
+  const [currentBounds, setCurrentBounds] = useState<google.maps.LatLngBounds | null>(null);
 
-  // If map script doesn't load within 3.5 seconds, show interactive vector map
+  // Fallback timeout if Google Maps script hangs
   useEffect(() => {
     if (isLoaded) return;
     const timer = setTimeout(() => {
@@ -163,9 +264,15 @@ export default function StationMap({
     return () => clearTimeout(timer);
   }, [isLoaded]);
 
-  // Fit bounds when shouldFitBounds is true (e.g. village far from stations)
+  // Fit bounds when shouldFitBounds is true
   useEffect(() => {
-    if (map && shouldFitBounds && typeof window !== "undefined" && window.google?.maps?.LatLngBounds && stations.length > 0) {
+    if (
+      map &&
+      shouldFitBounds &&
+      typeof window !== "undefined" &&
+      window.google?.maps?.LatLngBounds &&
+      stations.length > 0
+    ) {
       const bounds = new window.google.maps.LatLngBounds();
       if (userLocation) {
         bounds.extend(new window.google.maps.LatLng(userLocation.lat, userLocation.lng));
@@ -181,7 +288,7 @@ export default function StationMap({
       return;
     }
 
-    // Pan map to user location when first granted if not fitting bounds
+    // Pan map to user location when first granted
     if (map && userLocation && !selectedStation && !shouldFitBounds) {
       map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
       map.setZoom(13);
@@ -196,33 +303,40 @@ export default function StationMap({
     }
   }, [map, selectedStation]);
 
-  // Safe Google Maps API constructor checks
-  const markerIconConfig = useMemo(() => {
-    return (station: ScoredStation, isSelected: boolean) => {
-      const url = createStationMarkerSvg(station, isSelected);
-      if (typeof window !== "undefined" && window.google?.maps?.Size && window.google?.maps?.Point) {
-        if (isSelected) {
-          return {
-            url,
-            scaledSize: new window.google.maps.Size(144, 48),
-            anchor: new window.google.maps.Point(72, 44),
-          };
-        }
-        return {
-          url,
-          scaledSize: new window.google.maps.Size(38, 44),
-          anchor: new window.google.maps.Point(19, 41),
-        };
+  // Handle map idle: update visible viewport bounds and notify parent for bbox fetch
+  const handleMapIdle = useCallback(() => {
+    if (!map) return;
+    const bounds = map.getBounds();
+    if (bounds) {
+      setCurrentBounds(bounds);
+      if (onViewportChange) {
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        onViewportChange({
+          minLng: sw.lng(),
+          minLat: sw.lat(),
+          maxLng: ne.lng(),
+          maxLat: ne.lat(),
+        });
       }
-      return { url };
-    };
-  }, []);
+    }
+  }, [map, onViewportChange]);
 
-  // Graceful Fallback Interactive Map (when API key missing, offline, or blocked)
+  // Render only markers inside the current map viewport
+  const visibleStations = useMemo(() => {
+    if (!currentBounds || stations.length < 50) return stations;
+    return stations.filter((st) => {
+      if (typeof window !== "undefined" && window.google?.maps?.LatLng) {
+        return currentBounds.contains(new window.google.maps.LatLng(st.lat, st.lng));
+      }
+      return true;
+    });
+  }, [stations, currentBounds]);
+
+  // Fallback map view if Google Maps fails to load
   if (loadError || (!isLoaded && loadTimedOut)) {
     return (
       <div className="w-full h-full bg-[#EAEFF5] relative overflow-hidden select-none flex flex-col items-center justify-center">
-        {/* Abstract Roads Background */}
         <div className="absolute inset-0 opacity-25 pointer-events-none">
           <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -231,36 +345,26 @@ export default function StationMap({
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
-            {/* Pune-Solapur NH 65 & Expressways */}
             <path d="M 40 280 Q 240 290 480 340" fill="none" stroke="#0F172A" strokeWidth="14" />
             <path d="M 160 50 Q 220 280 290 700" fill="none" stroke="#94A3B8" strokeWidth="10" />
-            <path d="M 40 450 Q 240 370 420 520" fill="none" stroke="#CBD5E1" strokeWidth="12" />
           </svg>
         </div>
 
-        {/* Floating Station Markers */}
         <div className="absolute inset-0 pointer-events-auto overflow-hidden">
           {stations.slice(0, 16).map((st, idx) => {
             const positions = [
-              { top: "35%", left: "45%" }, // MIT ADT Loni Kalbhor
-              { top: "42%", left: "55%" }, // Highway Hypercharger
-              { top: "38%", left: "50%" }, // Vishwaraj Hospital
-              { top: "32%", left: "40%" }, // Kadamwakabasti
-              { top: "45%", left: "62%" }, // IOCL Swastik
-              { top: "28%", left: "32%" }, // Hadapsar
-              { top: "22%", left: "36%" }, // Kharadi
-              { top: "48%", left: "25%" }, // FC Road
-              { top: "42%", left: "18%" }, // Baner
-              { top: "24%", left: "22%" }, // Mumbai BKC
-              { top: "32%", left: "30%" }, // Expressway
-              { top: "18%", left: "38%" }, // Nashik
-              { top: "68%", left: "44%" }, // Kolhapur
-              { top: "58%", left: "65%" }, // Solapur
-              { top: "15%", left: "82%" }, // Nagpur
+              { top: "35%", left: "45%" },
+              { top: "42%", left: "55%" },
+              { top: "38%", left: "50%" },
+              { top: "32%", left: "40%" },
+              { top: "45%", left: "62%" },
+              { top: "28%", left: "32%" },
+              { top: "22%", left: "36%" },
+              { top: "48%", left: "25%" },
             ];
             const pos = positions[idx % positions.length];
             const isSelected = selectedStation?.id === st.id;
-            const brandColor = getNetworkColor(st.network);
+            const brandColor = getBrandColor(st.network);
 
             return (
               <button
@@ -279,10 +383,10 @@ export default function StationMap({
                   }`}
                 >
                   <span
-                    className="w-2 h-2 rounded-full shrink-0"
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: brandColor }}
                   />
-                  <span>{st.name.replace("University Campus Hub", "").replace("Highway Hypercharger", "Highway")}</span>
+                  <span>{st.name}</span>
                   <span className={isSelected ? "text-[#7EF000]" : "text-slate-500 font-extrabold"}>
                     {st.distanceKm}km
                   </span>
@@ -295,7 +399,7 @@ export default function StationMap({
     );
   }
 
-  // Loader while Google Maps script is fetching
+  // Loading spinner while API loads
   if (!isLoaded) {
     return (
       <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center gap-3 text-slate-600 select-none">
@@ -309,11 +413,17 @@ export default function StationMap({
     <div className="relative w-full h-full">
       <GoogleMap
         mapContainerStyle={containerStyle}
-        center={selectedStation ? { lat: selectedStation.lat, lng: selectedStation.lng } : (userLocation || defaultCenter)}
-        zoom={selectedStation ? 15 : 13}
+        center={
+          selectedStation
+            ? { lat: selectedStation.lat, lng: selectedStation.lng }
+            : userLocation || defaultCenter
+        }
+        zoom={selectedStation ? 15 : 12}
         onLoad={(m) => {
           setMap(m);
+          handleMapIdle();
         }}
+        onIdle={handleMapIdle}
         onClick={(e) => {
           if (onMapClick && e.latLng) {
             onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
@@ -324,10 +434,9 @@ export default function StationMap({
           disableDefaultUI: true,
           zoomControl: false,
           clickableIcons: false,
-          draggableCursor: isSettingLocation ? "crosshair" : undefined,
         }}
       >
-        {/* User location marker */}
+        {/* User location dot */}
         {userLocation && typeof window !== "undefined" && window.google?.maps?.Size && (
           <MarkerF
             position={{ lat: userLocation.lat, lng: userLocation.lng }}
@@ -347,20 +456,35 @@ export default function StationMap({
           />
         )}
 
-        {stations.map((station) => {
-          const isSelected = selectedStation?.id === station.id;
+        {/* Clustered Station Markers */}
+        <MarkerClustererF
+          options={{
+            gridSize: 50,
+            maxZoom: 14,
+            minimumClusterSize: 3,
+            styles: clusterStyles,
+          }}
+        >
+          {(clusterer) => (
+            <>
+              {visibleStations.map((station) => {
+                const isSelected = selectedStation?.id === station.id;
+                return (
+                  <MarkerF
+                    key={station.id}
+                    position={{ lat: station.lat, lng: station.lng }}
+                    clusterer={clusterer}
+                    onClick={() => onSelectStation(station)}
+                    icon={createStationMarkerIcon(station)}
+                    zIndex={isSelected ? 999 : 1}
+                  />
+                );
+              })}
+            </>
+          )}
+        </MarkerClustererF>
 
-          return (
-            <MarkerF
-              key={station.id}
-              position={{ lat: station.lat, lng: station.lng }}
-              onClick={() => onSelectStation(station)}
-              icon={markerIconConfig(station, isSelected)}
-              zIndex={isSelected ? 999 : 1}
-            />
-          );
-        })}
-
+        {/* Compact Card InfoWindow on Marker Tap */}
         {selectedStation && (
           <InfoWindowF
             position={{ lat: selectedStation.lat, lng: selectedStation.lng }}
@@ -368,44 +492,134 @@ export default function StationMap({
             options={{
               pixelOffset:
                 typeof window !== "undefined" && window.google?.maps?.Size
-                  ? new window.google.maps.Size(0, -45)
+                  ? new window.google.maps.Size(0, -25)
                   : undefined,
             }}
           >
-            <div className="p-2 max-w-[220px] text-slate-950 font-sans">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="font-black text-xs truncate">{selectedStation.name}</span>
-                <span className="text-[10px] bg-[#7EF000] text-slate-950 px-2 py-0.5 rounded-full font-black border border-lime-400">
-                  Score {selectedStation.aiScore}
+            <div className="p-1 max-w-[240px] text-slate-900 font-sans">
+              <div className="flex items-center justify-between gap-1.5 mb-1">
+                <span
+                  className="text-[9px] font-black px-2 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: getBrandColor(selectedStation.network) }}
+                >
+                  {selectedStation.network}
+                </span>
+                <span className="flex items-center gap-0.5 text-[10px] font-black text-amber-500">
+                  <Star size={11} className="fill-amber-400 stroke-none" />
+                  {selectedStation.rating}
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-extrabold mb-1.5">
-                <span>{selectedStation.network}</span>
+              <h4 className="font-black text-xs text-slate-950 truncate mb-1">
+                {selectedStation.name}
+              </h4>
+
+              <div className="flex items-center gap-2 text-[10px] text-slate-600 font-extrabold mb-2">
+                <span className="flex items-center gap-0.5">
+                  <MapPin size={10} className="text-slate-400" />
+                  {selectedStation.distanceKm} km
+                </span>
                 <span>·</span>
-                <span>{selectedStation.city}</span>
+                <span className="flex items-center gap-0.5">
+                  <Zap size={10} className="text-[#7EF000] fill-[#7EF000]" />
+                  {selectedStation.speedKw} kW
+                </span>
                 <span>·</span>
-                <span>{selectedStation.distanceKm} km</span>
+                <span>₹{selectedStation.price}/kWh</span>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200">
-                <div>
-                  <div className="font-black text-slate-950">₹{selectedStation.price}/kWh</div>
-                  <div className="text-[9px] text-slate-500 font-bold">{selectedStation.speedKw} kW Fast</div>
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                <div className="flex items-center gap-1 text-[10px] font-bold">
+                  {selectedStation.available ? (
+                    <span className="text-emerald-700 flex items-center gap-0.5">
+                      <CheckCircle2 size={11} /> Ready (0m)
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 flex items-center gap-0.5">
+                      <Clock size={11} /> {selectedStation.waitMinutes}m wait
+                    </span>
+                  )}
                 </div>
 
                 <Link
                   href={`/station/${selectedStation.id}`}
                   className="bg-[#7EF000] text-slate-950 font-black px-3 py-1 rounded-xl text-[11px] flex items-center gap-1 shadow-sm border border-lime-400 hover:scale-105 transition-transform"
                 >
-                  <span>Book</span>
-                  <ArrowRight size={12} strokeWidth={3} />
+                  <span>View</span>
+                  <ArrowRight size={11} strokeWidth={3} />
                 </Link>
               </div>
             </div>
           </InfoWindowF>
         )}
       </GoogleMap>
+
+      {/* Small Map Legend (Collapsible) */}
+      <div className="absolute top-28 left-3.5 z-20">
+        <button
+          onClick={() => setIsLegendOpen((prev) => !prev)}
+          className="bg-white/95 backdrop-blur-md border border-slate-200 text-slate-800 px-2.5 py-1.5 rounded-2xl shadow-md text-[10px] font-black flex items-center gap-1.5 hover:bg-slate-50 transition-all cursor-pointer"
+        >
+          <Info size={12} className="text-[#7EF000]" />
+          <span>Legend</span>
+          {isLegendOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+
+        {isLegendOpen && (
+          <div className="mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl text-[10px] font-bold text-slate-700 space-y-2.5 w-52 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div>
+              <div className="text-[9px] uppercase tracking-wider font-black text-slate-400 mb-1">
+                Networks
+              </div>
+              <div className="grid grid-cols-1 gap-1">
+                {Object.entries(BRAND_COLORS).map(([brand, color]) => (
+                  <div key={brand} className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="text-slate-800 font-extrabold truncate">{brand}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-2">
+              <div className="text-[9px] uppercase tracking-wider font-black text-slate-400 mb-1">
+                Status Ring
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-500 bg-white" />
+                  <span>Green = Available</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-red-500 bg-white" />
+                  <span>Red = Occupied</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-400 bg-white" />
+                  <span>Grey = Offline</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border-2 border-dashed border-slate-700 bg-slate-100 shrink-0" />
+                <span>Dashed = Demo station</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border-2 border-solid border-slate-700 bg-slate-100 shrink-0" />
+                <span>Solid = Real station</span>
+              </div>
+              <div className="text-[9px] text-slate-400 font-medium">
+                Larger marker = 50kW+ Fast DC
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Floating Google Maps Live Location Button */}
       {onLiveLocationClick && (
@@ -414,7 +628,7 @@ export default function StationMap({
           onClick={() => {
             if (userLocation && map) {
               map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
-              map.setZoom(15);
+              map.setZoom(14);
             }
             onLiveLocationClick();
           }}

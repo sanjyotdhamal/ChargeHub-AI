@@ -9,16 +9,15 @@ import {
   MapPin,
   Navigation,
   X,
-  Crosshair,
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
 import { useStations } from "@/context/StationsContext";
-import { scoreAllStations, ScoredStation } from "@/lib/scoring";
+import { scoreAllStations, scoreStation, ScoredStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
 import { useVehicles } from "@/context/VehicleContext";
 import { useAuth } from "@/context/AuthContext";
-import StationMap from "@/components/StationMap";
+import StationMap, { getCanonicalBrand } from "@/components/StationMap";
 import { StationMapSkeleton } from "@/components/StationSkeleton";
 import BatterySlider from "@/components/BatterySlider";
 import FilterChips, { FilterOption } from "@/components/FilterChips";
@@ -59,7 +58,6 @@ export type LocationState =
  * Reverse geocodes coordinates to a friendly place name.
  */
 async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
-  // 1. Try Google Maps Geocoder if loaded
   if (typeof window !== "undefined" && window.google?.maps?.Geocoder) {
     try {
       const geocoder = new window.google.maps.Geocoder();
@@ -90,7 +88,6 @@ async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
     }
   }
 
-  // 2. Free client-side reverse geocoding fallback
   try {
     const res = await fetch(
       `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
@@ -166,7 +163,18 @@ export default function DiscoverPage() {
   const { walletBalance, batteryPercent, userProfile } = useApp();
   const { activeVehicle, hasVehicle } = useVehicles();
   const { user } = useAuth();
-  const { stations, loading: stationsLoading, error: stationsError, refresh: refreshStations } = useStations();
+  const {
+    stations,
+    nearestStations,
+    loading: stationsLoading,
+    error: stationsError,
+    refresh: refreshStations,
+    fetchViewportStations,
+    loadNearestForLocation,
+    showDemo,
+    setShowDemo,
+  } = useStations();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
@@ -202,98 +210,153 @@ export default function DiscoverPage() {
     return { lat: DEFAULT_PUNE_COORDS.lat, lng: DEFAULT_PUNE_COORDS.lng, isReal: false };
   }, [locationState]);
 
-  // 1. Calculate real distances to EVERY station from current coordinates
-  const stationsWithRealDistance = useMemo(() => {
-    return stations.map((st) => ({
-      ...st,
-      distanceKm: haversineKm(activeCoords.lat, activeCoords.lng, st.lat, st.lng),
-    }));
-  }, [stations, activeCoords]);
+  // Reload nearest stations whenever user active coordinates change
+  useEffect(() => {
+    loadNearestForLocation(activeCoords.lat, activeCoords.lng);
+  }, [activeCoords.lat, activeCoords.lng, loadNearestForLocation]);
 
-  // 2. Score stations with real distances taken into account for normalization & AI ranking
-  const scoredStations = useMemo(() => {
-    return scoreAllStations(
-      stationsWithRealDistance,
+  // 1. Filter stations by demo toggle
+  const availableStations = useMemo(() => {
+    if (showDemo) return stations;
+    return stations.filter((s) => s.source !== "Synthetic demo");
+  }, [stations, showDemo]);
+
+  const availableNearest = useMemo(() => {
+    const base = nearestStations.length > 0 ? nearestStations : stations;
+    if (showDemo) return base;
+    return base.filter((s) => s.source !== "Synthetic demo");
+  }, [nearestStations, stations, showDemo]);
+
+  // Brand station counts for filter chips
+  const brandCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const st of availableStations) {
+      const canonical = getCanonicalBrand(st.network);
+      counts[canonical] = (counts[canonical] || 0) + 1;
+    }
+    return counts;
+  }, [availableStations]);
+
+  // Helper filter function
+  const applyFilters = useCallback(
+    <T extends { name: string; network: string; address: string; city: string; district: string; available: boolean; speedKw: number; chargers?: any[] }>(
+      list: T[]
+    ): T[] => {
+      return list.filter((st) => {
+        if (searchQuery.trim() !== "") {
+          const query = searchQuery.toLowerCase();
+          const matchName = st.name.toLowerCase().includes(query);
+          const matchNetwork = st.network.toLowerCase().includes(query);
+          const matchAddress = st.address.toLowerCase().includes(query);
+          const matchCity = st.city.toLowerCase().includes(query);
+          const matchDistrict = st.district.toLowerCase().includes(query);
+          if (!matchName && !matchNetwork && !matchAddress && !matchCity && !matchDistrict) {
+            return false;
+          }
+        }
+
+        if (activeFilter === "available" && !st.available) return false;
+        if (activeFilter === "fast" && st.speedKw < 50) return false;
+
+        const canonical = getCanonicalBrand(st.network);
+        if (
+          activeFilter === "Tata Power" ||
+          activeFilter === "Statiq" ||
+          activeFilter === "ChargeZone" ||
+          activeFilter === "Jio-bp pulse" ||
+          activeFilter === "Zeon Charging" ||
+          activeFilter === "Adani TotalEnergies"
+        ) {
+          if (canonical !== activeFilter && st.network !== activeFilter) return false;
+        }
+
+        if (activeFilter === "CCS2" || activeFilter === "Type 2" || activeFilter === "CHAdeMO") {
+          const hasConnector = st.chargers?.some(
+            (c: any) => c.connector?.toLowerCase() === activeFilter.toLowerCase()
+          );
+          if (!hasConnector) return false;
+        }
+
+        return true;
+      });
+    },
+    [searchQuery, activeFilter]
+  );
+
+  // 2. LIST & AI RANKING: Use the 200 stations nearest to user's location, keep ranking on the nearest 25
+  const nearest200WithDistance = useMemo(() => {
+    return availableNearest
+      .map((st) => ({
+        ...st,
+        distanceKm: haversineKm(activeCoords.lat, activeCoords.lng, st.lat, st.lng),
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 200);
+  }, [availableNearest, activeCoords]);
+
+  // AI ranking on the nearest 25 stations as before
+  const scoredNearestStations = useMemo(() => {
+    if (nearest200WithDistance.length === 0) return [];
+
+    const top25 = nearest200WithDistance.slice(0, 25);
+    const top25Scored = scoreAllStations(
+      top25,
       batteryPercent,
       activeVehicle,
       user?.chargingPreference
     );
-  }, [stationsWithRealDistance, batteryPercent, activeVehicle, user?.chargingPreference]);
 
-  // 3. Sort stations by distance when location is granted
-  const sortedStations = useMemo(() => {
-    if (locationState.status === "granted") {
-      return [...scoredStations].sort((a, b) => a.distanceKm - b.distanceKm);
-    }
-    return scoredStations;
-  }, [scoredStations, locationState.status]);
+    // Remaining stations scored against nearest200 normalization
+    const remaining = nearest200WithDistance.slice(25).map((st) =>
+      scoreStation(
+        st,
+        batteryPercent,
+        nearest200WithDistance,
+        activeVehicle,
+        user?.chargingPreference
+      )
+    );
 
-  // 4. Apply search query and connector/network filters
-  const filteredStations = useMemo(() => {
-    return sortedStations.filter((st) => {
-      if (searchQuery.trim() !== "") {
-        const query = searchQuery.toLowerCase();
-        const matchName = st.name.toLowerCase().includes(query);
-        const matchNetwork = st.network.toLowerCase().includes(query);
-        const matchAddress = st.address.toLowerCase().includes(query);
-        const matchCity = st.city.toLowerCase().includes(query);
-        const matchDistrict = st.district.toLowerCase().includes(query);
-        if (!matchName && !matchNetwork && !matchAddress && !matchCity && !matchDistrict) {
-          return false;
-        }
-      }
+    return [...top25Scored, ...remaining];
+  }, [nearest200WithDistance, batteryPercent, activeVehicle, user?.chargingPreference]);
 
-      if (activeFilter === "available" && !st.available) return false;
-      if (activeFilter === "fast" && st.speedKw < 50) return false;
-      if (
-        activeFilter === "Tata Power" ||
-        activeFilter === "Statiq" ||
-        activeFilter === "ChargeZone" ||
-        activeFilter === "Jio-bp pulse" ||
-        activeFilter === "Adani TotalEnergies"
-      ) {
-        if (st.network !== activeFilter) return false;
-      }
+  // Apply search and filter chips to list stations
+  const displayListStations = useMemo(() => {
+    return applyFilters(scoredNearestStations);
+  }, [scoredNearestStations, applyFilters]);
 
-      if (activeFilter === "CCS2" || activeFilter === "Type 2" || activeFilter === "CHAdeMO") {
-        const hasConnector = st.chargers?.some(
-          (c) => c.connector.toLowerCase() === activeFilter.toLowerCase()
-        );
-        if (!hasConnector) return false;
-      }
+  // 3. MAP STATIONS: All loaded viewport + nearest stations, with distance & filtered
+  const mapStations = useMemo(() => {
+    const withDistance = availableStations.map((st) => ({
+      ...st,
+      distanceKm: haversineKm(activeCoords.lat, activeCoords.lng, st.lat, st.lng),
+      aiScore: st.aiScore || 85,
+      aiPickReason: "Recommended EV Station",
+      topFactors: [st.available ? "Available" : "In use"],
+    }));
+    return applyFilters(withDistance);
+  }, [availableStations, activeCoords, applyFilters]);
 
-      return true;
-    });
-  }, [sortedStations, searchQuery, activeFilter]);
-
-  // 5. 50 km check: If no station is within 50 km, show top 10 nearest stations
+  // 50 km check for nearest warning
   const stationsWithin50km = useMemo(() => {
-    return filteredStations.filter((st) => st.distanceKm <= 50);
-  }, [filteredStations]);
+    return displayListStations.filter((st) => st.distanceKm <= 50);
+  }, [displayListStations]);
 
   const noStationsWithin50km = useMemo(() => {
     return (
       (locationState.status === "granted" || locationState.status === "default") &&
       stationsWithin50km.length === 0 &&
-      filteredStations.length > 0
+      displayListStations.length > 0
     );
-  }, [locationState.status, stationsWithin50km.length, filteredStations.length]);
-
-  // Stations to display: If none within 50 km, guarantee nearest 10 sorted by real distance
-  const displayStations = useMemo(() => {
-    if (noStationsWithin50km) {
-      return [...filteredStations].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 10);
-    }
-    return filteredStations;
-  }, [noStationsWithin50km, filteredStations]);
+  }, [locationState.status, stationsWithin50km.length, displayListStations.length]);
 
   // Fit map bounds when stations are far away (>50 km)
   const shouldFitBounds = useMemo(() => {
     return (
       noStationsWithin50km ||
-      (locationState.status === "granted" && (displayStations[0]?.distanceKm ?? 0) > 25)
+      (locationState.status === "granted" && (displayListStations[0]?.distanceKm ?? 0) > 25)
     );
-  }, [noStationsWithin50km, locationState.status, displayStations]);
+  }, [noStationsWithin50km, locationState.status, displayListStations]);
 
   // ── Request Real-Time Live Location (Google Maps style) ──
   const requestLiveLocation = useCallback(() => {
@@ -384,7 +447,7 @@ export default function DiscoverPage() {
     }
   }, [searchQuery]);
 
-  const nearestStationDistance = displayStations[0]?.distanceKm;
+  const nearestStationDistance = displayListStations[0]?.distanceKm;
   const isLocating = locationState.status === "requesting";
   const isLive = locationState.status === "granted";
 
@@ -411,7 +474,7 @@ export default function DiscoverPage() {
                     ? locationState.label
                     : "Locating..."}
                   {" · "}
-                  {displayStations.length} Hubs
+                  {availableStations.length} Hubs
                 </span>
               </div>
             </div>
@@ -423,11 +486,13 @@ export default function DiscoverPage() {
             className="bg-[#7EF000] border border-lime-400 text-slate-950 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm hover:scale-105 transition-transform shrink-0"
           >
             <Wallet size={14} className="text-slate-950" />
-            <span className="text-xs font-black text-slate-950">₹{walletBalance.toLocaleString("en-IN")}</span>
+            <span className="text-xs font-black text-slate-950">
+              ₹{walletBalance.toLocaleString("en-IN")}
+            </span>
           </Link>
         </div>
 
-        {/* ── Location Permission Prompt Banner (Default State) ── */}
+        {/* ── Location Permission Prompt Banner ── */}
         {showLocationBanner && locationState.status === "default" && (
           <div className="bg-white rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -465,7 +530,7 @@ export default function DiscoverPage() {
           </div>
         )}
 
-        {/* ── Active Live Location Strip (Google Maps style) ── */}
+        {/* ── Active Live Location Strip ── */}
         {isLive && (
           <div className="bg-white rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-300">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -542,15 +607,17 @@ export default function DiscoverPage() {
               className="bg-transparent text-xs text-slate-950 placeholder-slate-500 focus:outline-none w-full font-black"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+              <button
+                onClick={() => setSearchQuery("")}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
                 <X size={14} />
               </button>
             )}
           </div>
 
-          {/* Location + Battery toggle buttons */}
           <div className="flex items-center gap-1.5">
-            {/* Live Location Button in Header */}
+            {/* Live Location Button */}
             <button
               onClick={requestLiveLocation}
               title="Center on Live Location"
@@ -583,29 +650,37 @@ export default function DiscoverPage() {
           </div>
         </div>
 
-        {/* Battery Slider popup card */}
+        {/* Battery Slider popup */}
         {showSlider && (
           <div className="animate-in fade-in slide-in-from-top-2 duration-200">
             <BatterySlider nearestStationKm={nearestStationDistance} />
           </div>
         )}
 
-        {/* Horizontal Filter Chips */}
-        <FilterChips activeFilter={activeFilter} onSelectFilter={setActiveFilter} />
+        {/* Filter Chips with per-brand counts & Demo toggle */}
+        <FilterChips
+          activeFilter={activeFilter}
+          onSelectFilter={setActiveFilter}
+          brandCounts={brandCounts}
+          totalCount={availableStations.length}
+          showDemo={showDemo}
+          onToggleDemo={() => setShowDemo((prev) => !prev)}
+        />
       </div>
 
-      {/* ── Google Map Container with Real-Time Live Location Target Button ── */}
+      {/* ── Google Map Container ── */}
       <div className="w-full flex-1 relative z-0">
         {stationsLoading && stations.length === 0 ? (
           <StationMapSkeleton />
         ) : (
           <StationMap
-            stations={displayStations}
+            stations={mapStations}
             selectedStation={selectedStation}
             onSelectStation={(st) => setSelectedStation(st)}
             userLocation={activeCoords ? { lat: activeCoords.lat, lng: activeCoords.lng } : undefined}
             onMapClick={handleMapClick}
             onLiveLocationClick={requestLiveLocation}
+            onViewportChange={fetchViewportStations}
             isLocating={isLocating}
             shouldFitBounds={shouldFitBounds}
           />
@@ -614,7 +689,7 @@ export default function DiscoverPage() {
 
       {/* ── Draggable Bottom Sheet with Station List & AI Pick Card ── */}
       <BottomSheet
-        stations={displayStations}
+        stations={displayListStations}
         selectedStation={selectedStation}
         onSelectStation={(st) => setSelectedStation(st)}
         locationGranted={isLive}

@@ -145,7 +145,12 @@ export const StationQuerySchema = z
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),
     radiusKm: z.coerce.number().min(1).max(500).optional(),
-    limit: z.coerce.number().min(1).max(500).default(200),
+    bbox: z.string().optional(),
+    excludeDemo: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((val) => val === "true"),
+    limit: z.coerce.number().min(1).max(500).default(500),
   })
   .refine(
     (data) => {

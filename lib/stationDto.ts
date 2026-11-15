@@ -27,6 +27,11 @@ interface StationDoc {
   address?: string;
   rating?: number;
   chargers?: StationDocCharger[];
+  currentType?: string;
+  venueType?: string;
+  operatingHours?: string;
+  amenities?: string[];
+  totalPorts?: number;
   source?: string;
   isSimulated?: boolean;
 }
@@ -74,6 +79,11 @@ export function toStationDto(doc: StationDoc): StationDTO {
     address: doc.address || "",
     rating: doc.rating ?? 4.5,
     chargers,
+    currentType: doc.currentType || "",
+    venueType: doc.venueType || "",
+    operatingHours: doc.operatingHours || "",
+    amenities: Array.isArray(doc.amenities) ? doc.amenities : [],
+    totalPorts: doc.totalPorts || (chargers.length || 1),
     source: doc.source || "Sample",
     isSimulated: Boolean(doc.isSimulated),
   };

@@ -138,7 +138,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
       <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4">
         {/* Name & Rating */}
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span
               className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border ${getNetworkBadge(
                 station.network
@@ -146,6 +146,18 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
             >
               {station.network}
             </span>
+
+            {/* Source badge: Demo data (synthetic) vs Real: Open Charge Map */}
+            {station.source === "Synthetic demo" ? (
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                Demo data (synthetic)
+              </span>
+            ) : (
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                Real: Open Charge Map
+              </span>
+            )}
+
             <div className="flex items-center gap-1 text-amber-500 text-xs font-black">
               <Star size={13} className="fill-amber-400 stroke-none" />
               <span>{station.rating}</span>
@@ -283,6 +295,64 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
           );
         })()}
 
+        {/* Station Specifications & Amenities */}
+        {(station.totalPorts ||
+          station.currentType ||
+          station.operatingHours ||
+          station.venueType ||
+          (station.amenities && station.amenities.length > 0)) && (
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-3.5 space-y-3 shadow-sm">
+            <h2 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Station Specifications
+            </h2>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {station.totalPorts && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between">
+                  <span className="text-slate-500 font-bold text-[11px]">Total Ports</span>
+                  <span className="font-black text-slate-900 text-xs">{station.totalPorts}</span>
+                </div>
+              )}
+              {station.currentType && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between">
+                  <span className="text-slate-500 font-bold text-[11px]">Current Type</span>
+                  <span className="font-black text-slate-900 text-xs">{station.currentType}</span>
+                </div>
+              )}
+              {station.operatingHours && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between">
+                  <span className="text-slate-500 font-bold text-[11px]">Hours</span>
+                  <span className="font-black text-slate-900 text-xs">{station.operatingHours}</span>
+                </div>
+              )}
+              {station.venueType && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between">
+                  <span className="text-slate-500 font-bold text-[11px]">Venue</span>
+                  <span className="font-black text-slate-900 text-xs">{station.venueType}</span>
+                </div>
+              )}
+            </div>
+
+            {station.amenities && station.amenities.length > 0 && (
+              <div className="pt-1">
+                <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                  Amenities
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {station.amenities.map((amenity, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-slate-100 text-slate-800 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-slate-200"
+                    >
+                      {amenity}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Chargers / Ports List */}
         <div className="space-y-2 pt-2">
           <h2 className="text-xs font-black uppercase tracking-wider text-slate-400 px-1">
@@ -334,10 +404,10 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
             })}
           </div>
 
-          {/* Open Charge Map Attribution Credit */}
+          {/* Attribution Credit */}
           <div className="pt-4 pb-2 text-center border-t border-slate-200/60 mt-4">
             <p className="text-[10px] text-slate-500 font-bold">
-              Station data:{" "}
+              Demo stations are synthetic and for presentation only. Real stations:{" "}
               <a
                 href="https://openchargemap.org"
                 target="_blank"
@@ -346,7 +416,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
               >
                 Open Charge Map contributors
               </a>{" "}
-              (CC BY 4.0)
+              (CC BY 4.0).
             </p>
           </div>
         </div>

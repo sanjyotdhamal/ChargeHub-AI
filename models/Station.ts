@@ -26,6 +26,11 @@ export interface IStation extends Document {
   available: boolean;
   rating?: number;
   chargers: ICharger[];
+  currentType?: string;
+  venueType?: string;
+  operatingHours?: string;
+  amenities?: string[];
+  totalPorts?: number;
   source?: string;
   isSimulated?: boolean;
   lastUpdated?: Date;
@@ -131,6 +136,29 @@ const StationSchema = new Schema<IStation>(
     chargers: {
       type: [ChargerSchema],
       default: [],
+    },
+    currentType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    venueType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    operatingHours: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    amenities: {
+      type: [String],
+      default: [],
+    },
+    totalPorts: {
+      type: Number,
+      default: 1,
     },
     source: {
       type: String,
