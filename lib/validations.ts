@@ -150,7 +150,7 @@ export const StationQuerySchema = z
       .enum(["true", "false"])
       .optional()
       .transform((val) => val === "true"),
-    limit: z.coerce.number().min(1).max(500).default(500),
+    limit: z.coerce.number().min(1).max(10000).default(5000),
   })
   .refine(
     (data) => {

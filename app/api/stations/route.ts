@@ -89,8 +89,8 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // Cap each response at 500 stations
-    const responseLimit = Math.min(queryData.limit || 500, 500);
+    // Fetch stations up to limit (capped at 10,000)
+    const responseLimit = Math.min(queryData.limit || 5000, 10000);
 
     const stationsDoc = await Station.find(mongoFilter)
       .limit(responseLimit)

@@ -38,8 +38,8 @@ interface StationDoc {
 
 // Helper to convert DB Station document (or lean object) to StationDTO
 export function toStationDto(doc: StationDoc): StationDTO {
-  const lng = doc.location?.coordinates?.[0] ?? 0;
-  const lat = doc.location?.coordinates?.[1] ?? 0;
+  const lng = doc.location?.coordinates?.[0] ?? (doc as any).lng ?? (doc as any).longitude ?? 0;
+  const lat = doc.location?.coordinates?.[1] ?? (doc as any).lat ?? (doc as any).latitude ?? 0;
 
   const chargers: Charger[] = Array.isArray(doc.chargers)
     ? doc.chargers.map((c: StationDocCharger, index: number) => {

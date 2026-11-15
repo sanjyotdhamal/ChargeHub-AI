@@ -12,7 +12,7 @@ export type BBox = {
 };
 
 type StationsContextType = {
-  stations: Station[]; // Merged stations (nearest + current view), deduplicated by ID
+  stations: Station[]; // All loaded stations across Maharashtra
   nearestStations: Station[]; // 200 stations nearest to current user/chosen location
   loading: boolean;
   error: string | null;
@@ -29,136 +29,126 @@ const StationsContext = createContext<StationsContextType | undefined>(undefined
 // Default coordinates: Pune
 const DEFAULT_COORDS = { lat: 18.5204, lng: 73.8567 };
 
+// Haversine formula to compute distance in km
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+}
+
 export function StationsProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth();
-  const [nearestStations, setNearestStations] = useState<Station[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
+  const [nearestStations, setNearestStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showDemo, setShowDemo] = useState<boolean>(true);
 
   const activeCoordsRef = useRef<{ lat: number; lng: number }>(DEFAULT_COORDS);
-  const viewportTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Helper to merge new stations into existing array by id without duplicates
-  const mergeStations = useCallback((newItems: Station[]) => {
-    setStations((prev) => {
-      const existingMap = new Map<string, Station>();
-      prev.forEach((s) => existingMap.set(String(s.id), s));
-      newItems.forEach((s) => existingMap.set(String(s.id), s));
-      return Array.from(existingMap.values());
-    });
+  // Recalculate 200 nearest stations whenever stations list or active coordinates change
+  const updateNearest = useCallback((allList: Station[], coords: { lat: number; lng: number }) => {
+    const sorted = [...allList]
+      .map((st) => ({
+        ...st,
+        distanceKm: haversineKm(coords.lat, coords.lng, st.lat, st.lng),
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 200);
+
+    setNearestStations(sorted);
   }, []);
 
-  // 1. Load up to 200 nearest stations for a specific coordinate
-  const loadNearestForLocation = useCallback(
-    async (lat: number, lng: number) => {
-      activeCoordsRef.current = { lat, lng };
-      if (!user) return;
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const queryParams = new URLSearchParams({
-          lat: String(lat),
-          lng: String(lng),
-          radiusKm: "500",
-          limit: "200",
-        });
-
-        const res = await fetch(`/api/stations?${queryParams.toString()}`, {
-          headers: { "Cache-Control": "no-cache" },
-        });
-
-        if (!res.ok) {
-          if (res.status === 401) {
-            setError("Unauthorized");
-            return;
-          }
-          throw new Error(`Failed to load nearest stations: ${res.statusText}`);
-        }
-
-        const data = await res.json();
-        const loaded: Station[] = Array.isArray(data.stations) ? data.stations : [];
-        setNearestStations(loaded);
-        mergeStations(loaded);
-      } catch (err: unknown) {
-        console.error("loadNearestForLocation error:", err);
-        const message = err instanceof Error ? err.message : "Failed to load nearest stations";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [user, mergeStations]
-  );
-
-  // 2. Fetch stations in current viewport bounding box (debounced 400ms, max 500)
-  const fetchViewportStations = useCallback(
-    (bbox: BBox) => {
-      if (!user) return;
-
-      if (viewportTimerRef.current) {
-        clearTimeout(viewportTimerRef.current);
-      }
-
-      viewportTimerRef.current = setTimeout(async () => {
-        try {
-          const bboxParam = `${bbox.minLng.toFixed(5)},${bbox.minLat.toFixed(5)},${bbox.maxLng.toFixed(5)},${bbox.maxLat.toFixed(5)}`;
-          const queryParams = new URLSearchParams({
-            bbox: bboxParam,
-            limit: "500",
-          });
-
-          const res = await fetch(`/api/stations?${queryParams.toString()}`);
-          if (!res.ok) return;
-
-          const data = await res.json();
-          if (data && Array.isArray(data.stations)) {
-            mergeStations(data.stations);
-          }
-        } catch (err) {
-          console.error("fetchViewportStations error:", err);
-        }
-      }, 400); // 400ms debounce
-    },
-    [user, mergeStations]
-  );
-
-  // Initial load when user authenticated
-  useEffect(() => {
-    if (authLoading) return;
+  // Fetch ALL stations from MongoDB (up to 5,000+ so all CSV stations are loaded)
+  const fetchAllStations = useCallback(async () => {
     if (!user) {
-      setNearestStations([]);
       setStations([]);
+      setNearestStations([]);
       setLoading(false);
       return;
     }
 
-    loadNearestForLocation(activeCoordsRef.current.lat, activeCoordsRef.current.lng);
-  }, [user, authLoading, loadNearestForLocation]);
+    setLoading(true);
+    setError(null);
 
-  const refresh = useCallback(async () => {
-    await loadNearestForLocation(activeCoordsRef.current.lat, activeCoordsRef.current.lng);
-  }, [loadNearestForLocation]);
+    try {
+      const res = await fetch("/api/stations?limit=5000", {
+        headers: { "Cache-Control": "no-cache" },
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Unauthorized");
+          return;
+        }
+        throw new Error(`Failed to load stations: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      const loaded: Station[] = Array.isArray(data.stations) ? data.stations : [];
+      setStations(loaded);
+      updateNearest(loaded, activeCoordsRef.current);
+    } catch (err: unknown) {
+      console.error("StationsContext fetch error:", err);
+      const message = err instanceof Error ? err.message : "Failed to load charging stations";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, updateNearest]);
+
+  // Initial load
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setStations([]);
+      setNearestStations([]);
+      setLoading(false);
+      return;
+    }
+
+    fetchAllStations();
+  }, [user, authLoading, fetchAllStations]);
+
+  // When location changes, update nearest stations list immediately
+  const loadNearestForLocation = useCallback(
+    async (lat: number, lng: number) => {
+      activeCoordsRef.current = { lat, lng };
+      if (stations.length > 0) {
+        updateNearest(stations, { lat, lng });
+      }
+    },
+    [stations, updateNearest]
+  );
+
+  // Bounding box viewport fetch (debounced helper if more stations exist)
+  const fetchViewportStations = useCallback((_bbox: BBox) => {
+    // All stations are already loaded into memory for instant pan/zoom rendering
+  }, []);
 
   const getStationById = useCallback(
     async (id: number | string): Promise<Station | null> => {
-      // 1. Check in-memory list first
       const existing = stations.find((s) => String(s.id) === String(id));
-      if (existing) {
-        return existing;
-      }
+      if (existing) return existing;
 
-      // 2. Fallback to API route if not in memory
       try {
         const res = await fetch(`/api/stations/${id}`);
         if (!res.ok) return null;
         const data = await res.json();
         const found = data.station || null;
         if (found) {
-          mergeStations([found]);
+          setStations((prev) => {
+            if (prev.some((s) => String(s.id) === String(found.id))) return prev;
+            return [...prev, found];
+          });
         }
         return found;
       } catch (err) {
@@ -166,7 +156,7 @@ export function StationsProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
     },
-    [stations, mergeStations]
+    [stations]
   );
 
   return (
@@ -176,7 +166,7 @@ export function StationsProvider({ children }: { children: React.ReactNode }) {
         nearestStations,
         loading,
         error,
-        refresh,
+        refresh: fetchAllStations,
         getStationById,
         loadNearestForLocation,
         fetchViewportStations,

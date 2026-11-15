@@ -2,7 +2,6 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { z } from "zod";
-import { parse } from "csv-parse/sync";
 
 // 1. Load .env.local before importing any db modules or models
 const envPath = path.resolve(process.cwd(), ".env.local");
@@ -54,6 +53,79 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return R * c;
 }
 
+// Built-in RFC 4180 CSV parser that handles quotes, escaped commas, and newlines
+function parseCSV(content: string): Record<string, string>[] {
+  try {
+    // Try using csv-parse if installed
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { parse } = require("csv-parse/sync");
+    return parse(content, { columns: true, skip_empty_lines: true, trim: true });
+  } catch {
+    // Robust fallback RFC-4180 parser
+    const lines: string[][] = [];
+    let currentField = "";
+    let currentRecord: string[] = [];
+    let inQuotes = false;
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      const nextChar = content[i + 1];
+
+      if (inQuotes) {
+        if (char === '"' && nextChar === '"') {
+          currentField += '"';
+          i++;
+        } else if (char === '"') {
+          inQuotes = false;
+        } else {
+          currentField += char;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+        } else if (char === ",") {
+          currentRecord.push(currentField.trim());
+          currentField = "";
+        } else if (char === "\r") {
+          // ignore
+        } else if (char === "\n") {
+          currentRecord.push(currentField.trim());
+          if (currentRecord.length > 0 && currentRecord.some((f) => f.length > 0)) {
+            lines.push(currentRecord);
+          }
+          currentRecord = [];
+          currentField = "";
+        } else {
+          currentField += char;
+        }
+      }
+    }
+
+    if (currentField.length > 0 || currentRecord.length > 0) {
+      currentRecord.push(currentField.trim());
+      if (currentRecord.some((f) => f.length > 0)) {
+        lines.push(currentRecord);
+      }
+    }
+
+    if (lines.length <= 1) return [];
+
+    const headers = lines[0].map((h) => h.toLowerCase().trim());
+    const records: Record<string, string>[] = [];
+
+    for (let r = 1; r < lines.length; r++) {
+      const row = lines[r];
+      const obj: Record<string, string> = {};
+      headers.forEach((h, idx) => {
+        obj[h] = row[idx] !== undefined ? row[idx] : "";
+      });
+      records.push(obj);
+    }
+
+    return records;
+  }
+}
+
 async function runDemoCsvImport() {
   const args = process.argv.slice(2);
   const isClear = args.includes("--clear");
@@ -64,9 +136,16 @@ async function runDemoCsvImport() {
     process.exit(1);
   }
 
-  const csvPath = path.resolve(process.cwd(), "data", "demo", "maharashtra_ev_stations_demo.csv");
+  let csvPath = path.resolve(process.cwd(), "data", "demo", "maharashtra_ev_stations_demo.csv");
   if (!fs.existsSync(csvPath)) {
-    console.error(`❌ CSV file not found at: ${csvPath}`);
+    csvPath = path.resolve(process.cwd(), "data", "stations.csv");
+  }
+  if (!fs.existsSync(csvPath)) {
+    csvPath = path.resolve(process.cwd(), "data", "stations_template.csv");
+  }
+
+  if (!fs.existsSync(csvPath)) {
+    console.error("❌ CSV file not found at data/demo/maharashtra_ev_stations_demo.csv or data/stations.csv");
     process.exit(1);
   }
 
@@ -97,14 +176,10 @@ async function runDemoCsvImport() {
   ).lean();
   console.log(`📍 Found ${ocmStations.length} Open Charge Map stations in DB.`);
 
-  // Parse CSV file with csv-parse
+  // Parse CSV file
   console.log(`📁 Reading CSV from ${csvPath}...`);
   const fileContent = fs.readFileSync(csvPath, "utf-8");
-  const rawRecords: any[] = parse(fileContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
+  const rawRecords: any[] = parseCSV(fileContent);
 
   console.log(`📦 Parsed ${rawRecords.length} rows from CSV.`);
 
@@ -271,4 +346,3 @@ runDemoCsvImport().catch((err) => {
   console.error("❌ Demo import failed:", err);
   process.exit(1);
 });
-

@@ -55,39 +55,9 @@ export type LocationState =
   | { status: "denied"; reason: string };
 
 /**
- * Reverse geocodes coordinates to a friendly place name.
+ * Reverse geocodes coordinates to a friendly place name using free client API (no Google Billing required).
  */
 async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
-  if (typeof window !== "undefined" && window.google?.maps?.Geocoder) {
-    try {
-      const geocoder = new window.google.maps.Geocoder();
-      const res = await new Promise<string | null>((resolve) => {
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          if (status === "OK" && results && results.length > 0) {
-            for (const r of results) {
-              const comp = r.address_components || [];
-              const subLocality = comp.find(
-                (c) => c.types.includes("sublocality") || c.types.includes("sublocality_level_1")
-              )?.long_name;
-              const locality = comp.find((c) => c.types.includes("locality"))?.long_name;
-              const adminArea = comp.find((c) => c.types.includes("administrative_area_level_2"))?.long_name;
-              const parts = [subLocality, locality, adminArea].filter(Boolean);
-              if (parts.length > 0) {
-                return resolve(Array.from(new Set(parts)).slice(0, 2).join(", "));
-              }
-            }
-            const snippet = results[0].formatted_address.split(",").slice(0, 2).join(",").trim();
-            if (snippet) return resolve(snippet);
-          }
-          resolve(null);
-        });
-      });
-      if (res) return res;
-    } catch {
-      // Continue to free client API fallback
-    }
-  }
-
   try {
     const res = await fetch(
       `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
@@ -104,38 +74,13 @@ async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
     // Fallback to lat/lng
   }
 
-  return `Your location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
 }
 
 /**
- * Geocodes an address or village/city name to coordinates
+ * Geocodes an address or village/city name to coordinates using free Nominatim (no Google Billing required)
  */
 async function geocodePlace(query: string): Promise<{ lat: number; lng: number; label: string } | null> {
-  if (typeof window !== "undefined" && window.google?.maps?.Geocoder) {
-    try {
-      const geocoder = new window.google.maps.Geocoder();
-      const res = await new Promise<{ lat: number; lng: number; label: string } | null>((resolve) => {
-        geocoder.geocode(
-          { address: query, componentRestrictions: { country: "IN" } },
-          (results, status) => {
-            if (status === "OK" && results && results.length > 0) {
-              const best = results[0];
-              const lat = best.geometry.location.lat();
-              const lng = best.geometry.location.lng();
-              const label = best.formatted_address.split(",").slice(0, 2).join(",").trim();
-              resolve({ lat, lng, label });
-            } else {
-              resolve(null);
-            }
-          }
-        );
-      });
-      if (res) return res;
-    } catch {
-      // Continue to fallback
-    }
-  }
-
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
