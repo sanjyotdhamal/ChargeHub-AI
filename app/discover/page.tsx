@@ -12,6 +12,7 @@ import {
   BatteryWarning,
   BatteryCharging,
   ChevronRight,
+  ChevronDown,
   Zap,
   CheckCircle2,
 } from "lucide-react";
@@ -44,7 +45,26 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 // Default fallback location when GPS has not been used or after Reset
 const DEFAULT_PUNE_COORDS = { lat: 18.5204, lng: 73.8567 };
-const DEFAULT_LOCATION_LABEL = "Default location: Pune";
+const DEFAULT_LOCATION_LABEL = "Pune Central";
+
+export const POPULAR_LOCATIONS = [
+  { name: "Pune Central", label: "Pune Central, Maharashtra", lat: 18.5204, lng: 73.8567 },
+  { name: "Loni Kalbhor", label: "Loni Kalbhor, Pune", lat: 18.4912, lng: 74.0280 },
+  { name: "Kothrud", label: "Kothrud, Pune", lat: 18.5074, lng: 73.8077 },
+  { name: "Viman Nagar", label: "Viman Nagar, Pune", lat: 18.5679, lng: 73.9143 },
+  { name: "Hadapsar / Magarpatta", label: "Hadapsar, Pune", lat: 18.5089, lng: 73.9260 },
+  { name: "Hinjewadi IT Park", label: "Hinjewadi, Pune", lat: 18.5913, lng: 73.7389 },
+  { name: "Baner / Balewadi", label: "Baner, Pune", lat: 18.5590, lng: 73.7868 },
+  { name: "Wakad", label: "Wakad, Pune", lat: 18.5987, lng: 73.7660 },
+  { name: "Aundh", label: "Aundh, Pune", lat: 18.5602, lng: 73.8077 },
+  { name: "Kalyani Nagar", label: "Kalyani Nagar, Pune", lat: 18.5463, lng: 73.9034 },
+  { name: "Pimpri-Chinchwad", label: "Pimpri-Chinchwad, Pune", lat: 18.6298, lng: 73.7997 },
+  { name: "Mumbai (BKC / Bandra)", label: "Bandra, Mumbai", lat: 19.0600, lng: 72.8600 },
+  { name: "Thane", label: "Thane, Maharashtra", lat: 19.2183, lng: 72.9781 },
+  { name: "Navi Mumbai", label: "Navi Mumbai, Maharashtra", lat: 19.0771, lng: 72.9986 },
+  { name: "Nashik", label: "Nashik, Maharashtra", lat: 19.9975, lng: 73.7898 },
+  { name: "Nagpur", label: "Nagpur, Maharashtra", lat: 21.1458, lng: 79.0882 },
+];
 
 export type LocationState =
   | { status: "default"; lat: number; lng: number; label: string }
@@ -220,6 +240,36 @@ export default function DiscoverPage() {
   });
 
   const [showLocationBanner, setShowLocationBanner] = useState(true);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationSearchInput, setLocationSearchInput] = useState("");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+
+  // Load saved location on mount if previously chosen by user
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("chargehub:user_location");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.lat === "number" && typeof parsed.lng === "number" && parsed.label) {
+          setLocationState(parsed);
+          setShowLocationBanner(false);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Save location to localStorage whenever granted
+  useEffect(() => {
+    if (locationState.status === "granted") {
+      try {
+        localStorage.setItem("chargehub:user_location", JSON.stringify(locationState));
+      } catch {
+        // ignore
+      }
+    }
+  }, [locationState]);
 
   // Default filter to active vehicle connector if available
   useEffect(() => {
@@ -462,6 +512,76 @@ export default function DiscoverPage() {
     setShowLocationBanner(false);
   }, []);
 
+  // ── Select predefined popular location ──
+  const handleSelectPredefinedLocation = useCallback((loc: (typeof POPULAR_LOCATIONS)[number]) => {
+    setLocationState({
+      status: "granted",
+      lat: loc.lat,
+      lng: loc.lng,
+      label: loc.label,
+      accuracyMeters: 10,
+    });
+    setSelectedStation(null);
+    setShowLocationModal(false);
+    setShowLocationBanner(false);
+  }, []);
+
+  // ── Search & set location from Location Picker modal ──
+  const handleSearchModalLocation = useCallback(
+    async (queryText?: string) => {
+      const q = (queryText || locationSearchInput).trim();
+      if (!q) return;
+
+      // 1. Check if matches predefined
+      const pre = POPULAR_LOCATIONS.find((p) => p.name.toLowerCase().includes(q.toLowerCase()));
+      if (pre) {
+        handleSelectPredefinedLocation(pre);
+        return;
+      }
+
+      // 2. Check if matches any station city/district
+      const matchedCity = availableStations.find(
+        (st) =>
+          (st.city && st.city.toLowerCase().includes(q.toLowerCase())) ||
+          (st.district && st.district.toLowerCase().includes(q.toLowerCase()))
+      );
+      if (matchedCity) {
+        setLocationState({
+          status: "granted",
+          lat: matchedCity.lat,
+          lng: matchedCity.lng,
+          label: `${matchedCity.city}, Maharashtra`,
+          accuracyMeters: 10,
+        });
+        setSelectedStation(null);
+        setShowLocationModal(false);
+        setShowLocationBanner(false);
+        return;
+      }
+
+      // 3. Geocode via Nominatim
+      setIsSearchingLocation(true);
+      try {
+        const match = await geocodePlace(q);
+        if (match) {
+          setLocationState({
+            status: "granted",
+            lat: match.lat,
+            lng: match.lng,
+            label: match.label,
+            accuracyMeters: 10,
+          });
+          setSelectedStation(null);
+          setShowLocationModal(false);
+          setShowLocationBanner(false);
+        }
+      } finally {
+        setIsSearchingLocation(false);
+      }
+    },
+    [locationSearchInput, availableStations, handleSelectPredefinedLocation]
+  );
+
   // ── Matching Cities & Stations for Live Search Dropdown ──
   const matchingStations = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -595,6 +715,16 @@ export default function DiscoverPage() {
   const isLocating = locationState.status === "requesting";
   const isLive = locationState.status === "granted";
 
+  const currentLocationLabel = useMemo(() => {
+    if (locationState.status === "granted" || locationState.status === "default") {
+      return locationState.label;
+    }
+    if (locationState.status === "requesting") {
+      return "Locating…";
+    }
+    return DEFAULT_LOCATION_LABEL;
+  }, [locationState]);
+
   // ── Range Reachability ──
   // Use vehicle claimed range if linked, else user's manually entered range
   const effectiveRangeKm = useMemo<number | null>(() => {
@@ -624,28 +754,34 @@ export default function DiscoverPage() {
       <div className="absolute top-1 inset-x-3 z-20 flex flex-col gap-2">
         {/* User Greeting & Wallet Row */}
         <div className="flex items-center justify-between bg-white/95 backdrop-blur-xl border-2 border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm">
-          <Link href="/profile" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
-            <div className="w-8 h-8 rounded-full bg-[#7EF000] text-slate-950 flex items-center justify-center text-xs font-black shadow-sm border border-lime-400 shrink-0">
-              {userProfile.avatarInitials || "EH"}
-            </div>
-            <div>
-              <div className="text-[11px] font-black text-slate-950 leading-none">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Link
+              href="/profile"
+              className="w-8 h-8 rounded-full bg-[#7EF000] text-slate-950 flex items-center justify-center text-xs font-black shadow-sm border border-lime-400 shrink-0 hover:opacity-85 transition-opacity"
+            >
+              {userProfile.avatarInitials || "SD"}
+            </Link>
+            <div className="min-w-0">
+              <Link
+                href="/profile"
+                className="text-[11px] font-black text-slate-950 leading-none hover:underline block truncate"
+              >
                 {userProfile.name || "Sanjyot Dhamal"}
-              </div>
-              <div className="text-[9px] text-slate-600 font-extrabold mt-0.5 flex items-center gap-1">
-                <MapPin size={9} className="text-[#7EF000]" />
-                <span className="truncate max-w-[170px]">
-                  {isLive
-                    ? locationState.label
-                    : locationState.status === "default"
-                    ? locationState.label
-                    : "Locating..."}
-                  {" · "}
-                  {availableStations.length} Hubs
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(true)}
+                className="text-[9px] text-slate-700 font-extrabold mt-0.5 flex items-center gap-1 hover:text-black cursor-pointer bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md border border-slate-200/80 transition-colors"
+                title="Tap to change your location"
+              >
+                <MapPin size={9} className="text-[#7EF000] shrink-0 fill-[#7EF000]" />
+                <span className="truncate max-w-[130px]">
+                  {currentLocationLabel.replace("Default location: ", "")}
                 </span>
-              </div>
+                <ChevronDown size={9} className="text-slate-400 shrink-0" />
+              </button>
             </div>
-          </Link>
+          </div>
 
           {/* Battery % Button — tap to open popup */}
           <button
@@ -820,20 +956,37 @@ export default function DiscoverPage() {
 
         {/* ── Active Live Location Strip ── */}
         {isLive && (
-          <div className="bg-white rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-sm border-2 border-[#7EF000] animate-in fade-in duration-300">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className="w-2.5 h-2.5 rounded-full bg-[#7EF000] animate-pulse shrink-0" />
-              <p className="text-[11px] font-black text-slate-950 truncate">
-                📍 {locationState.label} · Nearest Hubs Sorted
-              </p>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black text-slate-950 truncate">
+                  📍 {locationState.label} · Nearest Hubs Sorted
+                </p>
+                {(locationState.accuracyMeters ?? 0) > 1500 && (
+                  <p className="text-[9px] text-amber-700 font-bold truncate">
+                    ⚠️ Wi-Fi/IP location (~{Math.round((locationState.accuracyMeters ?? 0) / 1000)} km accuracy). Tap Change to set your exact area.
+                  </p>
+                )}
+              </div>
             </div>
-            <button
-              onClick={handleResetLocation}
-              className="text-[10px] text-slate-500 font-black hover:text-slate-800 bg-slate-100 px-2 py-0.8 rounded-lg cursor-pointer"
-              title="Return to default Pune view"
-            >
-              Reset
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(true)}
+                className="text-[10px] text-slate-900 font-black bg-lime-100 hover:bg-lime-200 border border-lime-300 px-2 py-0.8 rounded-lg cursor-pointer transition-colors"
+              >
+                Change
+              </button>
+              <button
+                type="button"
+                onClick={handleResetLocation}
+                className="text-[10px] text-slate-500 font-bold hover:text-slate-800 bg-slate-100 px-2 py-0.8 rounded-lg cursor-pointer transition-colors"
+                title="Return to default Pune view"
+              >
+                Reset
+              </button>
+            </div>
           </div>
         )}
 
@@ -1151,6 +1304,142 @@ export default function DiscoverPage() {
           setSearchQuery("");
         }}
       />
+      {/* ── Choose / Change Location Modal ── */}
+      {showLocationModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4 animate-in slide-in-from-bottom-4 duration-250 select-none max-h-[85vh] overflow-y-auto no-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-[#7EF000] border border-lime-400 flex items-center justify-center text-slate-950 shadow-xs shrink-0">
+                  <MapPin size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-950">Set Your Location</h3>
+                  <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                    Find EV stations nearest to where you are
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(false)}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Current Active Location display */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-2.5 h-2.5 rounded-full bg-[#7EF000] animate-pulse shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Current Pin</div>
+                  <div className="text-xs font-black text-slate-950 truncate">{currentLocationLabel}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetLocation}
+                className="text-[10px] font-black text-slate-600 hover:text-slate-900 bg-white border border-slate-200 px-2 py-1 rounded-lg shrink-0 cursor-pointer"
+              >
+                Reset Default
+              </button>
+            </div>
+
+            {/* Live GPS button inside modal */}
+            <button
+              type="button"
+              onClick={() => {
+                requestLiveLocation();
+                setShowLocationModal(false);
+              }}
+              className="w-full bg-[#7EF000] hover:bg-lime-400 text-slate-950 font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 border border-lime-400 shadow-sm transition-all cursor-pointer active:scale-98"
+            >
+              <Navigation size={14} strokeWidth={2.5} />
+              <span>Use Device Live GPS</span>
+            </button>
+
+            <div className="text-[9px] text-slate-400 font-bold text-center leading-relaxed">
+              ⚠️ Note: On Windows laptops / Wi-Fi, browser GPS may report your ISP gateway (e.g. Kalewadi Pimpri). Select your actual locality below for 100% accuracy.
+            </div>
+
+            {/* Search Input inside modal */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                Search Any Area / Colony / Landmark
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-slate-50 border-2 border-slate-200 focus-within:border-[#7EF000] rounded-2xl px-3 py-2 flex items-center gap-2">
+                  <Search size={14} className="text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="e.g. Loni Kalbhor, Kothrud, Viman Nagar..."
+                    value={locationSearchInput}
+                    onChange={(e) => setLocationSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSearchModalLocation();
+                    }}
+                    className="bg-transparent text-xs text-slate-950 placeholder-slate-400 focus:outline-none w-full font-black"
+                  />
+                  {locationSearchInput && (
+                    <button
+                      type="button"
+                      onClick={() => setLocationSearchInput("")}
+                      className="text-slate-400 hover:text-slate-700"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={isSearchingLocation || !locationSearchInput.trim()}
+                  onClick={() => handleSearchModalLocation()}
+                  className="bg-[#0F172A] text-[#7EF000] font-black text-xs px-3.5 py-2 rounded-2xl border border-slate-800 disabled:opacity-50 cursor-pointer hover:bg-slate-800 transition-all shrink-0"
+                >
+                  {isSearchingLocation ? "Searching…" : "Set"}
+                </button>
+              </div>
+            </div>
+
+            {/* Popular Localities Chips */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                Quick Pick — Popular Pune &amp; Maharashtra Localities
+              </label>
+              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto no-scrollbar">
+                {POPULAR_LOCATIONS.map((loc) => {
+                  const isSelected = currentLocationLabel.toLowerCase().includes(loc.name.toLowerCase());
+                  return (
+                    <button
+                      key={loc.name}
+                      type="button"
+                      onClick={() => handleSelectPredefinedLocation(loc)}
+                      className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1 ${
+                        isSelected
+                          ? "bg-[#0F172A] text-[#7EF000] border-slate-900 shadow-xs"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                      }`}
+                    >
+                      <MapPin size={10} className={isSelected ? "text-[#7EF000]" : "text-slate-400"} />
+                      <span>{loc.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-2 text-center text-[10px] text-slate-500 font-bold">
+              💡 Tip: You can also tap directly anywhere on the map to set your location pin!
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -285,7 +285,7 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
   name: "Esther Howard",
   email: "esther.howard@chargehub.ai",
   phone: "+91 98220 44192",
-  city: "Loni Kalbhor, Pune",
+  city: "Pune",
   state: "Maharashtra",
   vehiclePlate: "MH 12 TE 8421",
   memberTier: "ChargeHub Gold · Pioneer",
