@@ -282,6 +282,19 @@ export default function StationMap({
     }
   }, [map, userLocation, stations, shouldFitBounds, selectedStation]);
 
+  // Pan map to user location when userLocation coordinates change
+  const prevUserCoordsRef = React.useRef<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (map && userLocation) {
+      const prev = prevUserCoordsRef.current;
+      if (!prev || prev.lat !== userLocation.lat || prev.lng !== userLocation.lng) {
+        prevUserCoordsRef.current = { lat: userLocation.lat, lng: userLocation.lng };
+        map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+        map.setZoom(14);
+      }
+    }
+  }, [map, userLocation]);
+
   // Pan map when selectedStation changes
   useEffect(() => {
     if (map && selectedStation && selectedStation.lat && selectedStation.lng) {

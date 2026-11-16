@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Search,
-  SlidersHorizontal,
   MapPin,
   Navigation,
   X,
@@ -21,7 +20,7 @@ import { scoreAllStations, scoreStation, ScoredStation } from "@/lib/scoring";
 import { useApp } from "@/context/AppContext";
 import { useVehicles } from "@/context/VehicleContext";
 import { useAuth } from "@/context/AuthContext";
-import StationMap, { getCanonicalBrand } from "@/components/StationMap";
+import StationMap, { getCanonicalBrand, getBrandColor } from "@/components/StationMap";
 import { StationMapSkeleton } from "@/components/StationSkeleton";
 import BatterySlider from "@/components/BatterySlider";
 import FilterChips, { FilterOption } from "@/components/FilterChips";
@@ -61,22 +60,97 @@ export type LocationState =
 
 /**
  * Reverse geocodes coordinates to a friendly place name using free client API (no Google Billing required).
+ * Prioritizes rich OpenStreetMap Nominatim data (neighborhood + city) with intelligent BigDataCloud fallback.
  */
 async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
+  // 1. Try OpenStreetMap Nominatim with full address details
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const addr = data.address || {};
+
+      // Extract specific local neighborhood / suburb / locality
+      const neighborhood =
+        addr.neighbourhood ||
+        addr.suburb ||
+        addr.residential ||
+        addr.subdistrict ||
+        addr.quarter ||
+        addr.road;
+
+      // Extract primary city or town
+      const city =
+        addr.city ||
+        addr.town ||
+        addr.village ||
+        addr.municipality ||
+        addr.city_district ||
+        addr.county;
+
+      const state = addr.state || "Maharashtra";
+
+      if (neighborhood && city && neighborhood.toLowerCase() !== city.toLowerCase()) {
+        return `${neighborhood}, ${city}`;
+      }
+      if (city) {
+        return `${city}, ${state}`;
+      }
+      if (data.display_name) {
+        const parts = data.display_name.split(",").map((s: string) => s.trim());
+        return parts.slice(0, 2).join(", ");
+      }
+    }
+  } catch (err) {
+    console.warn("Nominatim reverse geocode error:", err);
+  }
+
+  // 2. Fallback: BigDataCloud with intelligent filtering (ignoring generic tehsils like "Haveli")
   try {
     const res = await fetch(
       `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
     );
     if (res.ok) {
       const data = await res.json();
-      const locality = data.locality || data.city;
-      const admin = data.principalSubdivision;
-      if (locality) {
-        return [locality, admin].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+      const city = data.city || "";
+      let localArea = "";
+
+      // In BigDataCloud, administrative items often contain the real neighborhood / ward
+      if (Array.isArray(data.localityInfo?.administrative)) {
+        const candidates = data.localityInfo.administrative
+          .map((item: any) => item.name)
+          .filter(
+            (name: string) =>
+              name &&
+              name !== "India" &&
+              name !== "Maharashtra" &&
+              name.toLowerCase() !== "haveli" &&
+              name.toLowerCase() !== city.toLowerCase()
+          );
+        if (candidates.length > 0) {
+          localArea = candidates[candidates.length - 1];
+        }
+      }
+
+      if (!localArea && data.locality && data.locality.toLowerCase() !== "haveli" && data.locality !== city) {
+        localArea = data.locality;
+      }
+
+      if (localArea && city) {
+        return `${localArea}, ${city}`;
+      }
+      if (city) {
+        return `${city}, ${data.principalSubdivision || "Maharashtra"}`;
+      }
+      if (data.locality && data.locality.toLowerCase() !== "haveli") {
+        return `${data.locality}, ${data.principalSubdivision || "Maharashtra"}`;
       }
     }
-  } catch {
-    // Fallback to lat/lng
+  } catch (err) {
+    console.warn("BigDataCloud reverse geocode error:", err);
   }
 
   return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
@@ -126,9 +200,11 @@ export default function DiscoverPage() {
   } = useStations();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchingGeocode, setIsSearchingGeocode] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
-  const [showSlider, setShowSlider] = useState(false);
   const [showRangeSetup, setShowRangeSetup] = useState(false);
   const [rangeBannerDismissed, setRangeBannerDismissed] = useState(false);
   // Battery popup — open by default every time the page mounts
@@ -343,6 +419,7 @@ export default function DiscoverPage() {
           label: placeLabel,
           accuracyMeters,
         });
+        setSelectedStation(null);
         setShowLocationBanner(false);
       },
       (err) => {
@@ -385,22 +462,134 @@ export default function DiscoverPage() {
     setShowLocationBanner(false);
   }, []);
 
-  // ── Village/City Search Handler (Geocodes place & centers map) ──
-  const handleSearchSubmit = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    const match = await geocodePlace(searchQuery.trim());
-    if (match) {
+  // ── Matching Cities & Stations for Live Search Dropdown ──
+  const matchingStations = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (q.length < 1) return [];
+
+    return availableStations
+      .filter((st) => {
+        return (
+          st.name?.toLowerCase().includes(q) ||
+          st.network?.toLowerCase().includes(q) ||
+          st.address?.toLowerCase().includes(q) ||
+          st.city?.toLowerCase().includes(q) ||
+          st.district?.toLowerCase().includes(q)
+        );
+      })
+      .map((st) => ({
+        ...st,
+        distanceKm: haversineKm(activeCoords.lat, activeCoords.lng, st.lat, st.lng),
+        aiScore: st.aiScore || 85,
+        aiPickReason: "Recommended EV Station",
+        topFactors: [st.available ? "Available" : "In use"],
+      }))
+      .sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(q);
+        const bStarts = b.name.toLowerCase().startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.distanceKm - b.distanceKm;
+      })
+      .slice(0, 6);
+  }, [availableStations, searchQuery, activeCoords]);
+
+  const matchingCities = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (q.length < 1) return [];
+
+    const cityMap: Record<
+      string,
+      { city: string; district: string; count: number; avgLat: number; avgLng: number }
+    > = {};
+
+    for (const st of availableStations) {
+      const city = st.city || "";
+      const district = st.district || "";
+      if (!city) continue;
+
+      if (city.toLowerCase().includes(q) || district.toLowerCase().includes(q)) {
+        if (!cityMap[city]) {
+          cityMap[city] = { city, district, count: 0, avgLat: st.lat, avgLng: st.lng };
+        }
+        cityMap[city].count += 1;
+      }
+    }
+
+    return Object.values(cityMap).slice(0, 4);
+  }, [availableStations, searchQuery]);
+
+  const handleSelectStation = useCallback((st: any) => {
+    setSelectedStation(st);
+    setSearchQuery(st.name);
+    setIsSearchOpen(false);
+  }, []);
+
+  const handleSelectCity = useCallback(
+    (cityItem: { city: string; district: string; avgLat: number; avgLng: number }) => {
       setLocationState({
         status: "granted",
-        lat: match.lat,
-        lng: match.lng,
-        label: match.label,
-        accuracyMeters: 5,
+        lat: cityItem.avgLat,
+        lng: cityItem.avgLng,
+        label: `${cityItem.city}, Maharashtra`,
+        accuracyMeters: 10,
       });
+      setSelectedStation(null);
+      setSearchQuery(cityItem.city);
+      setIsSearchOpen(false);
       setShowLocationBanner(false);
-      setSearchQuery(""); // Clear search to display all stations near this village
+    },
+    []
+  );
+
+  // ── Village/City Search Handler (Geocodes place & centers map) ──
+  const handleSearchSubmit = useCallback(async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    if (matchingStations.length > 0) {
+      handleSelectStation(matchingStations[0]);
+      return;
     }
-  }, [searchQuery]);
+
+    if (matchingCities.length > 0) {
+      handleSelectCity(matchingCities[0]);
+      return;
+    }
+
+    setIsSearchingGeocode(true);
+    try {
+      const match = await geocodePlace(q);
+      if (match) {
+        setLocationState({
+          status: "granted",
+          lat: match.lat,
+          lng: match.lng,
+          label: match.label,
+          accuracyMeters: 5,
+        });
+        setSelectedStation(null);
+        setShowLocationBanner(false);
+        setIsSearchOpen(false);
+      }
+    } finally {
+      setIsSearchingGeocode(false);
+    }
+  }, [searchQuery, matchingStations, matchingCities, handleSelectStation, handleSelectCity]);
+
+  // Click outside listener to close search dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node)
+      ) {
+        setIsSearchOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const nearestStationDistance = displayListStations[0]?.distanceKm;
   const isLocating = locationState.status === "requesting";
@@ -745,79 +934,174 @@ export default function DiscoverPage() {
           </div>
         )}
 
-        {/* Search Bar Row */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 bg-white/95 backdrop-blur-xl border-2 border-slate-200 rounded-2xl px-3.5 py-2 flex items-center gap-2 shadow-sm">
+        {/* ── Search Bar with Live Suggestions Dropdown ── */}
+        <div ref={searchContainerRef} className="relative w-full z-30">
+          <div className="w-full bg-white/95 backdrop-blur-xl border-2 border-slate-200 focus-within:border-[#7EF000] focus-within:ring-2 focus-within:ring-[#7EF000]/30 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-sm transition-all">
             <button
               type="button"
               onClick={handleSearchSubmit}
               title="Search place or filter stations"
-              className="text-slate-500 hover:text-slate-950 transition-colors cursor-pointer"
+              className="text-slate-500 hover:text-slate-950 transition-colors cursor-pointer shrink-0"
             >
-              <Search size={16} className="shrink-0" />
+              <Search size={16} />
             </button>
             <input
               type="text"
-              placeholder="Search station, city, or village…"
+              placeholder="Search station, city, or area in Maharashtra…"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchOpen(true)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   handleSearchSubmit();
+                } else if (e.key === "Escape") {
+                  setIsSearchOpen(false);
                 }
               }}
-              className="bg-transparent text-xs text-slate-950 placeholder-slate-500 focus:outline-none w-full font-black"
+              className="bg-transparent text-xs text-slate-950 placeholder-slate-400 focus:outline-none w-full font-black"
             />
+            {isSearchingGeocode && (
+              <div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin shrink-0" />
+            )}
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery("")}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setIsSearchOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 shrink-0"
               >
-                <X size={14} />
+                <X size={15} />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Live Location Button */}
-            <button
-              onClick={requestLiveLocation}
-              title="Center on Live Location"
-              className={`p-2.5 rounded-2xl border-2 transition-all shadow-sm cursor-pointer ${
-                isLive
-                  ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-xs"
-                  : isLocating
-                  ? "bg-blue-50 text-blue-600 border-blue-400"
-                  : "bg-white text-slate-700 border-slate-200 hover:border-[#7EF000]"
-              }`}
-            >
-              <Navigation
-                size={15}
-                className={isLocating ? "animate-spin" : isLive ? "fill-slate-950" : ""}
-              />
-            </button>
+          {/* ── Live Search Dropdown ── */}
+          {isSearchOpen && searchQuery.trim().length >= 1 && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border-2 border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-[360px] overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-top-1 duration-150 divide-y divide-slate-100">
+              {/* Cities / Areas Matches */}
+              {matchingCities.length > 0 && (
+                <div>
+                  <div className="px-3.5 py-1.5 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <MapPin size={11} className="text-[#7EF000]" />
+                    <span>Cities &amp; Areas ({matchingCities.length})</span>
+                  </div>
+                  {matchingCities.map((item) => (
+                    <button
+                      key={item.city}
+                      type="button"
+                      onClick={() => handleSelectCity(item)}
+                      className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-[#7EF000]/20 text-slate-900 flex items-center justify-center shrink-0 border border-lime-300">
+                          <MapPin size={13} className="text-slate-950" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-slate-950 truncate">
+                            {item.city}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-bold truncate">
+                            {item.district ? `${item.district}, Maharashtra` : "Maharashtra"}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black bg-slate-100 text-slate-800 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
+                        {item.count} Hubs
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {/* Battery Level Slider Toggle */}
-            <button
-              onClick={() => setShowSlider((prev) => !prev)}
-              className={`p-2.5 rounded-2xl border-2 transition-all shadow-sm cursor-pointer ${
-                showSlider
-                  ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-[0_4px_14px_rgba(126,240,0,0.4)]"
-                  : "bg-white text-slate-950 border-slate-200 hover:border-slate-300"
-              }`}
-              title="Adjust Battery Level & Range Risk"
-            >
-              <SlidersHorizontal size={16} />
-            </button>
-          </div>
+              {/* EV Charging Station Matches */}
+              {matchingStations.length > 0 && (
+                <div>
+                  <div className="px-3.5 py-1.5 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Zap size={11} className="text-[#7EF000] fill-[#7EF000]" />
+                    <span>Charging Stations ({matchingStations.length})</span>
+                  </div>
+                  {matchingStations.map((st) => (
+                    <button
+                      key={String(st.id)}
+                      type="button"
+                      onClick={() => handleSelectStation(st)}
+                      className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 text-white text-[10px] font-black shadow-xs"
+                          style={{ backgroundColor: getBrandColor(st.network) }}
+                        >
+                          ⚡
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="text-[9px] font-black px-1.5 py-0.2 rounded-md text-white shrink-0"
+                              style={{ backgroundColor: getBrandColor(st.network) }}
+                            >
+                              {st.network}
+                            </span>
+                            <span className="text-xs font-black text-slate-950 truncate">
+                              {st.name}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-bold truncate mt-0.5">
+                            {st.address || st.city}
+                          </div>
+                          <div className="flex items-center gap-2 text-[9px] text-slate-600 font-extrabold mt-0.5">
+                            <span>📍 {st.distanceKm} km away</span>
+                            <span>·</span>
+                            <span>⚡ {st.speedKw} kW</span>
+                            <span>·</span>
+                            <span>₹{st.price}/kWh</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0 pl-2">
+                        <span
+                          className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                            st.available
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                              : "bg-slate-100 text-slate-600 border-slate-200"
+                          }`}
+                        >
+                          {st.available ? "Available" : "Occupied"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* No match in dataset fallback */}
+              {matchingCities.length === 0 && matchingStations.length === 0 && (
+                <div className="p-4 text-center">
+                  <p className="text-xs font-black text-slate-800">No matching stations found in dataset</p>
+                  <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                    Tap below to search OpenStreetMap for this location
+                  </p>
+                </div>
+              )}
+
+              {/* Search on OpenStreetMap option */}
+              <button
+                type="button"
+                onClick={handleSearchSubmit}
+                className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 flex items-center gap-2 text-xs font-black text-slate-800 transition-colors cursor-pointer"
+              >
+                <Search size={14} className="text-slate-600" />
+                <span>Search map for "{searchQuery}"</span>
+                <ChevronRight size={13} className="ml-auto text-slate-400" />
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* Battery Slider popup */}
-        {showSlider && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-            <BatterySlider nearestStationKm={nearestStationDistance} />
-          </div>
-        )}
 
         {/* Filter Chips with per-brand counts & Demo toggle */}
         <FilterChips
