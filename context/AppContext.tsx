@@ -6,9 +6,9 @@ import { LearnedUserHabit, inferHabitFromHistory } from "@/lib/scoring";
 
 /**
  * Global realistic charging simulation constant:
- * Battery rises 1% every 3.5 seconds.
+ * Battery rises 1% every 4.0 seconds (calibrated for steady, realistic pace).
  */
-export const SECONDS_PER_PERCENT = 3.5;
+export const SECONDS_PER_PERCENT = 4.0;
 
 export type ActiveChargingSession = {
   stationId: string | number;
@@ -46,17 +46,20 @@ export function computeActiveSessionProgress(
   const rawAddedPercent = elapsedSeconds / SECONDS_PER_PERCENT;
   const maxBatteryGain = Math.max(0, 100 - session.startPercent);
 
-  // Check how much battery can be charged with the available wallet balance
-  const kwhPerPercent = session.vehicleBatteryCapacity / 100;
+  // Realistic charging meter calibration:
+  // EV fast charging meters deliver energy steadily (~0.012 - 0.015 kWh/sec),
+  // making money tick up realistically (about ₹0.20 - ₹0.25 per second, ~6-8 paise per 300ms)
+  // rather than rushing ahead in large jumps.
+  const realisticKwhPerPercent = (session.vehicleBatteryCapacity / 100) * 0.16;
   const maxAffordableKwh = session.pricePerKwh > 0 ? Math.max(0, walletBalance) / session.pricePerKwh : Infinity;
-  const maxAffordablePercent = kwhPerPercent > 0 ? maxAffordableKwh / kwhPerPercent : Infinity;
+  const maxAffordablePercent = realisticKwhPerPercent > 0 ? maxAffordableKwh / realisticKwhPerPercent : Infinity;
 
   const isFull = rawAddedPercent >= maxBatteryGain;
   const isWalletDepleted = !isFull && rawAddedPercent >= maxAffordablePercent;
 
   const effectiveAddedPercent = Math.min(rawAddedPercent, maxBatteryGain, maxAffordablePercent);
   const currentBattery = Math.min(100, parseFloat((session.startPercent + effectiveAddedPercent).toFixed(1)));
-  const kwhDelivered = parseFloat((effectiveAddedPercent * kwhPerPercent).toFixed(2));
+  const kwhDelivered = parseFloat((effectiveAddedPercent * realisticKwhPerPercent).toFixed(2));
   const cost = parseFloat((kwhDelivered * session.pricePerKwh).toFixed(2));
 
   const remainingPercent = Math.max(0, 100 - currentBattery);

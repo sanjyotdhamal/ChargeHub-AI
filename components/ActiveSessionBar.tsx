@@ -22,7 +22,7 @@ export default function ActiveSessionBar() {
     return () => clearInterval(interval);
   }, [activeSession]);
 
-  // Hide rules per requirements:
+  // Hide rules:
   // Shown on Home/Explore, Discover, Station detail, Wallet, History, Profile.
   // Hidden on /session, splash, login, and signup.
   const isHidden =
@@ -45,41 +45,35 @@ export default function ActiveSessionBar() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const isStationPage = pathname?.startsWith("/station");
-  // Position above bottom docked buttons on station detail, or just above bottom tab bar on other pages
-  const bottomPositionClass = isStationPage ? "bottom-[74px]" : "bottom-2";
-
   return (
-    <div
-      className={`absolute left-0 right-0 ${bottomPositionClass} px-3 z-40 pointer-events-none flex justify-center`}
-    >
+    <div className="absolute top-2 left-0 right-0 px-3 z-50 pointer-events-none flex justify-center">
       <AnimatePresence>
         <motion.div
-          key="active-session-pill"
-          initial={{ y: 35, opacity: 0, scale: 0.94 }}
+          key="active-session-top-pill"
+          initial={{ y: -35, opacity: 0, scale: 0.94 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
-          exit={{ y: 35, opacity: 0, scale: 0.94 }}
-          transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          exit={{ y: -35, opacity: 0, scale: 0.94 }}
+          transition={{ type: "spring", stiffness: 420, damping: 28 }}
           onClick={() => router.push("/session")}
-          className="pointer-events-auto w-full max-w-[394px] bg-slate-950/95 backdrop-blur-md border border-lime-400/40 text-white rounded-2xl p-2 px-3 flex items-center justify-between shadow-[0_12px_32px_rgba(0,0,0,0.35),0_0_20px_rgba(126,240,0,0.18)] cursor-pointer active:scale-[0.98] transition-transform select-none"
+          className="pointer-events-auto w-full max-w-[398px] bg-slate-950/95 backdrop-blur-xl border-2 border-lime-400/60 text-white rounded-2xl p-2.5 px-3.5 flex items-center justify-between shadow-[0_14px_36px_rgba(0,0,0,0.45),0_0_24px_rgba(126,240,0,0.25)] cursor-pointer active:scale-[0.98] transition-transform select-none"
         >
-          {/* Left: Pulsing Lightning Icon & Station Name */}
+          {/* Left: Pulsing Lightning Icon & Station Details */}
           <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
             <motion.div
-              animate={{ scale: [1, 1.18, 1], opacity: [0.9, 1, 0.9] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              className="w-7 h-7 rounded-full bg-[#7EF000] text-slate-950 flex items-center justify-center shrink-0 shadow-[0_0_14px_rgba(126,240,0,0.6)]"
+              animate={{ scale: [1, 1.18, 1], opacity: [0.85, 1, 0.85] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              className="w-8 h-8 rounded-full bg-[#7EF000] text-slate-950 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(126,240,0,0.7)]"
             >
-              <Zap size={15} className="fill-slate-950 stroke-none" />
+              <Zap size={16} className="fill-slate-950 stroke-none" />
             </motion.div>
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-black uppercase tracking-wider text-[#7EF000]">
-                  Charging Live
+                  Charging in Progress
                 </span>
-                <span className="inline-block w-1 h-1 rounded-full bg-slate-500" />
-                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-0.5">
+                <span className="inline-block w-1 h-1 rounded-full bg-slate-400" />
+                <span className="text-[10px] font-bold text-slate-300 flex items-center gap-0.5 font-mono">
                   <Clock size={10} className="text-slate-400" />
                   {formatElapsed(progress.elapsedSeconds)}
                 </span>
@@ -91,12 +85,12 @@ export default function ActiveSessionBar() {
           </div>
 
           {/* Right: Live Battery %, Live Cost, and Chevron */}
-          <div className="flex items-center gap-2.5 shrink-0 pl-1 border-l border-slate-800">
+          <div className="flex items-center gap-2.5 shrink-0 pl-2.5 border-l border-slate-800">
             <div className="flex flex-col items-end">
               <span className="text-xs font-black text-[#7EF000] tracking-tight">
                 {Math.round(progress.currentBattery)}%
               </span>
-              <span className="text-[10px] font-extrabold text-slate-300">
+              <span className="text-[11px] font-black text-slate-100 font-mono">
                 ₹{progress.cost.toFixed(2)}
               </span>
             </div>
