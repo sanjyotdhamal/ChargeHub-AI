@@ -301,9 +301,9 @@ export default function HistoryPage() {
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
         <button
           onClick={() => setSelectedMonthKey("all")}
-          className={`shrink-0 text-[11px] font-black px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+          className={`shrink-0 text-[11px] font-black px-3.5 py-1.5 rounded-full border transition-all cursor-pointer ${
             selectedMonthKey === "all"
-              ? "bg-[#0F172A] text-[#7EF000] border-slate-900 shadow-xs"
+              ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-sm"
               : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
           }`}
         >
@@ -318,14 +318,14 @@ export default function HistoryPage() {
               onClick={() => setSelectedMonthKey(isSelected ? "all" : bucket.key)}
               className={`shrink-0 text-[11px] font-black px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1.5 ${
                 isSelected
-                  ? "bg-[#0F172A] text-[#7EF000] border-slate-900 shadow-xs"
+                  ? "bg-[#7EF000] text-slate-950 border-lime-400 shadow-sm"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
               <span>{bucket.label}</span>
               <span
                 className={`text-[9px] px-1.5 py-0.2 rounded-full ${
-                  isSelected ? "bg-[#7EF000] text-slate-950 font-black" : "bg-slate-100 text-slate-600"
+                  isSelected ? "bg-slate-950 text-white font-black" : "bg-slate-100 text-slate-600 font-bold"
                 }`}
               >
                 ₹{bucket.totalCost}
@@ -348,17 +348,17 @@ export default function HistoryPage() {
         ) : (
           displayedBuckets.map((bucket) => (
             <div key={bucket.key} className="space-y-2.5">
-              {/* ── Month Section Header Card ── */}
-              <div className="bg-[#0F172A] text-white rounded-2xl p-3 flex items-center justify-between shadow-xs border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-[#7EF000]">
-                    <Calendar size={15} />
+              {/* ── Month Section Header Card (High Contrast Light Card) ── */}
+              <div className="bg-white text-slate-950 rounded-2xl p-3 flex items-center justify-between shadow-xs border-2 border-slate-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#7EF000]/25 text-slate-950 border border-lime-400 flex items-center justify-center font-black">
+                    <Calendar size={16} className="text-slate-950" />
                   </div>
                   <div>
-                    <h2 className="text-xs font-black tracking-wide text-white">
+                    <h2 className="text-xs font-black tracking-wide text-slate-950">
                       {bucket.fullName}
                     </h2>
-                    <span className="text-[10px] text-slate-400 font-semibold">
+                    <span className="text-[10px] text-slate-500 font-bold">
                       {bucket.sessions.length} charging session{bucket.sessions.length > 1 ? "s" : ""}
                     </span>
                   </div>
@@ -366,10 +366,10 @@ export default function HistoryPage() {
 
                 <div className="flex items-center gap-2 text-right">
                   <div className="flex flex-col items-end">
-                    <span className="text-xs font-black text-[#7EF000]">
+                    <span className="text-xs font-black text-slate-950 bg-[#7EF000] px-2.5 py-0.5 rounded-lg border border-lime-400 shadow-2xs">
                       ₹{bucket.totalCost.toLocaleString("en-IN")}
                     </span>
-                    <span className="text-[10px] text-slate-300 font-bold">
+                    <span className="text-[10px] text-slate-600 font-black mt-0.5">
                       {bucket.totalKwh} kWh delivered
                     </span>
                   </div>

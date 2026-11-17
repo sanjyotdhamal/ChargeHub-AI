@@ -1,11 +1,27 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import BottomTabBar from "./BottomTabBar";
 import ActiveSessionBar from "./ActiveSessionBar";
 import ErrorBoundary from "./ErrorBoundary";
 
 export default function MobileFrame({ children }: { children: React.ReactNode }) {
+  // Live clock state displaying real device time
+  const [clockTime, setClockTime] = useState<string>("9:41");
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const formatted = `${hours % 12 || 12}:${minutes.toString().padStart(2, "0")}`;
+      setClockTime(formatted);
+    };
+
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <div className="w-full min-h-screen bg-white md:bg-[#F8FAFC] flex items-center justify-center font-sans antialiased select-none text-slate-950 overflow-hidden p-0 md:py-6 md:px-4">
       {/* ── iPhone 16 Pro Max Chassis Container ── */}
@@ -25,8 +41,8 @@ export default function MobileFrame({ children }: { children: React.ReactNode })
 
         {/* ── iPhone 16 Pro Max Dynamic Island & Status Bar ── */}
         <div className="w-full h-12 bg-[#F4F6F9] px-7 pt-3 pb-1 flex items-center justify-between z-50 shrink-0 text-[12px] font-black text-slate-950 tracking-tight relative border-b border-slate-200/50">
-          {/* iOS Clock */}
-          <span className="font-black text-[13px] text-slate-950 pl-1">9:41</span>
+          {/* iOS Clock: Real Device Time */}
+          <span className="font-black text-[13px] text-slate-950 pl-1 tabular-nums">{clockTime}</span>
 
           {/* Dynamic Island Pill Notch */}
           <div className="absolute left-1/2 -translate-x-1/2 top-2.5 w-[120px] h-[32px] bg-black rounded-full flex items-center justify-between px-3 shadow-md z-50 pointer-events-none">

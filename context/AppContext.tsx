@@ -6,9 +6,20 @@ import { LearnedUserHabit, inferHabitFromHistory } from "@/lib/scoring";
 
 /**
  * Global realistic charging simulation constant:
- * Battery rises 1% every 4.0 seconds (calibrated for steady, realistic pace).
+ * Battery rises 1% every 5.0 seconds (calibrated for calm, realistic pace).
  */
-export const SECONDS_PER_PERCENT = 4.0;
+export const SECONDS_PER_PERCENT = 5.0;
+
+/**
+ * Formats the real-time clock and date for recent transactions:
+ * E.g. "17 Nov 2026, 09:41 PM"
+ */
+export function getRealCurrentDateTime(): string {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return `${dateStr}, ${timeStr}`;
+}
 
 export type ActiveChargingSession = {
   stationId: string | number;
@@ -46,11 +57,11 @@ export function computeActiveSessionProgress(
   const rawAddedPercent = elapsedSeconds / SECONDS_PER_PERCENT;
   const maxBatteryGain = Math.max(0, 100 - session.startPercent);
 
-  // Realistic charging meter calibration:
-  // EV fast charging meters deliver energy steadily (~0.012 - 0.015 kWh/sec),
-  // making money tick up realistically (about ₹0.20 - ₹0.25 per second, ~6-8 paise per 300ms)
-  // rather than rushing ahead in large jumps.
-  const realisticKwhPerPercent = (session.vehicleBatteryCapacity / 100) * 0.16;
+  // Ultra-realistic charging meter calibration:
+  // EV fast charging meters deliver energy steadily,
+  // making money tick up slowly & authentically (~₹0.05 - ₹0.07 per second, ~1-2 paise per 300ms)
+  // so the numbers rise calmly and look like real money increasing.
+  const realisticKwhPerPercent = (session.vehicleBatteryCapacity / 100) * 0.05;
   const maxAffordableKwh = session.pricePerKwh > 0 ? Math.max(0, walletBalance) / session.pricePerKwh : Infinity;
   const maxAffordablePercent = realisticKwhPerPercent > 0 ? maxAffordableKwh / realisticKwhPerPercent : Infinity;
 
@@ -401,7 +412,7 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     id: "tx-topup-nov",
     amount: 2000,
     type: "topup",
-    date: "10 Nov 2026",
+    date: "10 Nov 2026, 11:30 AM",
   },
   {
     id: "tx-sess-1",
@@ -409,7 +420,7 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     network: "Tata Power",
     amount: 568,
     type: "charge",
-    date: "14 Nov 2026",
+    date: "14 Nov 2026, 06:15 PM",
   },
   {
     id: "tx-sess-2",
@@ -417,7 +428,7 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     network: "Jio-bp pulse",
     amount: 718,
     type: "charge",
-    date: "09 Nov 2026",
+    date: "09 Nov 2026, 02:40 PM",
   },
   {
     id: "tx-sess-3",
@@ -425,13 +436,13 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     network: "ChargeZone",
     amount: 495,
     type: "charge",
-    date: "03 Nov 2026",
+    date: "03 Nov 2026, 08:10 PM",
   },
   {
     id: "tx-topup-oct",
     amount: 2500,
     type: "topup",
-    date: "02 Oct 2026",
+    date: "02 Oct 2026, 09:20 AM",
   },
   {
     id: "tx-sess-4",
@@ -439,7 +450,7 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     network: "Zeon Charging",
     amount: 682,
     type: "charge",
-    date: "28 Oct 2026",
+    date: "28 Oct 2026, 05:45 PM",
   },
   {
     id: "tx-sess-5",
@@ -447,7 +458,7 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     network: "Statiq",
     amount: 542,
     type: "charge",
-    date: "21 Oct 2026",
+    date: "21 Oct 2026, 01:25 PM",
   },
 ];
 
@@ -691,7 +702,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               network: rec.network,
               amount: finalCost,
               type: "charge",
-              date: "Just now",
+              date: getRealCurrentDateTime(),
             };
             setTransactions((prev) => [newTx, ...prev]);
             setActiveSession(null);
@@ -744,7 +755,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: "tx-" + Date.now(),
       amount,
       type: "topup",
-      date: "Just now",
+      date: getRealCurrentDateTime(),
     };
     setTransactions((prev) => [newTx, ...prev]);
   };
@@ -770,7 +781,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       network: record.network,
       amount: record.cost,
       type: "charge",
-      date: "Just now",
+      date: getRealCurrentDateTime(),
     };
     setTransactions((prev) => [newTx, ...prev]);
   };
@@ -824,7 +835,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         network: record.network,
         amount: finalCost,
         type: "charge",
-        date: "Just now",
+        date: getRealCurrentDateTime(),
       };
       setTransactions((prev) => [newTx, ...prev]);
 
