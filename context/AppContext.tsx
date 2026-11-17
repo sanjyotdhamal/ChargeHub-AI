@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "./AuthContext";
+import { LearnedUserHabit, inferHabitFromHistory } from "@/lib/scoring";
 
 export type Transaction = {
   id: string;
@@ -226,6 +227,102 @@ export const DEFAULT_SESSION_HISTORY: ChargingSessionRecord[] = [
   },
 ];
 
+// Preset Persona 1: Speed Seeker (prioritizes high-speed DC fast charging 60kW-120kW, tolerant of higher tariffs)
+export const SPEED_SEEKER_HISTORY: ChargingSessionRecord[] = [
+  {
+    id: "speed-1",
+    stationId: "demo-sp-1",
+    stationName: "Jio-bp pulse - Mumbai-Pune Expressway, Khalapur",
+    network: "Jio-bp pulse",
+    date: "14 Nov 2026",
+    kwh: 38.0,
+    cost: 874, // ₹23/kWh
+    durationMinutes: 24, // ~95 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "speed-2",
+    stationId: "demo-sp-2",
+    stationName: "Zeon Charging - Express Inn, Nashik Phata",
+    network: "Zeon Charging",
+    date: "10 Nov 2026",
+    kwh: 34.5,
+    cost: 828, // ₹24/kWh
+    durationMinutes: 21, // ~98 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "speed-3",
+    stationId: "demo-sp-3",
+    stationName: "ChargeZone - Sayaji Hotel, Wakad",
+    network: "ChargeZone",
+    date: "05 Nov 2026",
+    kwh: 29.0,
+    cost: 667, // ₹23/kWh
+    durationMinutes: 22, // ~79 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "speed-4",
+    stationId: "demo-sp-4",
+    stationName: "Jio-bp pulse - Urse Toll Plaza",
+    network: "Jio-bp pulse",
+    date: "28 Oct 2026",
+    kwh: 36.0,
+    cost: 828, // ₹23/kWh
+    durationMinutes: 25, // ~86 kW
+    connectorType: "CCS2",
+  },
+];
+
+// Preset Persona 2: Budget Conscious (prioritizes low rates ₹11-14/kWh, slower AC or low-tariff DC)
+export const BUDGET_SAVER_HISTORY: ChargingSessionRecord[] = [
+  {
+    id: "budget-1",
+    stationId: "demo-bg-1",
+    stationName: "MahaGenco Green Hub - Somwar Peth",
+    network: "MahaGenco",
+    date: "13 Nov 2026",
+    kwh: 24.0,
+    cost: 288, // ₹12/kWh
+    durationMinutes: 70, // ~20 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "budget-2",
+    stationId: "demo-bg-2",
+    stationName: "Tata Power - Seasons Mall, Magarpatta",
+    network: "Tata Power",
+    date: "08 Nov 2026",
+    kwh: 22.0,
+    cost: 286, // ₹13/kWh
+    durationMinutes: 65, // ~20 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "budget-3",
+    stationId: "demo-bg-3",
+    stationName: "BESCOM / MSEDCL Community Charger - Kothrud",
+    network: "MSEDCL",
+    date: "02 Nov 2026",
+    kwh: 28.0,
+    cost: 336, // ₹12/kWh
+    durationMinutes: 80, // ~21 kW
+    connectorType: "CCS2",
+  },
+  {
+    id: "budget-4",
+    stationId: "demo-bg-4",
+    stationName: "Statiq Economy - PCMC Civic Center",
+    network: "Statiq",
+    date: "26 Oct 2026",
+    kwh: 20.0,
+    cost: 260, // ₹13/kWh
+    durationMinutes: 58, // ~20 kW
+    connectorType: "CCS2",
+  },
+];
+
 export const DEFAULT_TRANSACTIONS: Transaction[] = [
   {
     id: "tx-topup-nov",
@@ -329,6 +426,10 @@ type AppContextType = {
   setManualRangeKm: (km: number | null) => void;
   manualBatteryCapacityKwh: number | null;
   setManualBatteryCapacityKwh: (kwh: number | null) => void;
+  // Personalisation from History
+  userHabit: LearnedUserHabit;
+  activePersona: "default" | "speed" | "budget";
+  setPersonaHabit: (persona: "default" | "speed" | "budget") => void;
 };
 
 const DEFAULT_VEHICLE: VehicleProfile = {
@@ -361,6 +462,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Manual range info (used when no vehicle is linked to the app)
   const [manualRangeKm, setManualRangeKm] = useState<number | null>(null);
   const [manualBatteryCapacityKwh, setManualBatteryCapacityKwh] = useState<number | null>(null);
+  // Persona habit state ("default" analyzes real sessionHistory; "speed" & "budget" test personas)
+  const [activePersona, setActivePersona] = useState<"default" | "speed" | "budget">("default");
+
+  const userHabit = useMemo(() => {
+    if (activePersona === "speed") {
+      return inferHabitFromHistory(SPEED_SEEKER_HISTORY);
+    }
+    if (activePersona === "budget") {
+      return inferHabitFromHistory(BUDGET_SAVER_HISTORY);
+    }
+    return inferHabitFromHistory(sessionHistory);
+  }, [activePersona, sessionHistory]);
+
+  const setPersonaHabit = (persona: "default" | "speed" | "budget") => {
+    setActivePersona(persona);
+  };
 
   const prevUserRef = useRef<string | null>(null);
 
@@ -535,6 +652,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setManualRangeKm,
         manualBatteryCapacityKwh,
         setManualBatteryCapacityKwh,
+        userHabit,
+        activePersona,
+        setPersonaHabit,
       }}
     >
       {children}

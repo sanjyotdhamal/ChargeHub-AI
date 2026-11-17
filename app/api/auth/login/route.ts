@@ -88,8 +88,15 @@ export async function POST(req: NextRequest) {
 
     response.cookies.set(COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
     return response;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Login error:", error);
+    const errObj = error as { name?: string; message?: string };
+    if (errObj?.name === "MongooseServerSelectionError" || errObj?.message?.includes("whitelist")) {
+      return NextResponse.json(
+        { error: "Database connection failed: Your IP address is not whitelisted in MongoDB Atlas Network Access." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: "Something went wrong, please try again" },
       { status: 500 }

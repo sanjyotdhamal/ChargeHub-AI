@@ -14,12 +14,109 @@ export type ScoringVehicle = {
 
 export type ChargingPreference = "balanced" | "fastest" | "cheapest" | "nearest";
 
+export type LearnedUserHabit = {
+  inferredPreference: "fastest" | "cheapest" | "balanced";
+  habitTitle: string;
+  description: string;
+  speedBias: number;
+  priceBias: number;
+  avgSpeedKw: number;
+  avgPricePerKwh: number;
+  totalSessionsAnalyzed: number;
+};
+
+/**
+ * Infers user habit from past charging sessions.
+ * Learns whether the user prioritizes high-speed turnarounds (Speed Seeker)
+ * or lower electricity rates (Budget Conscious).
+ */
+export function inferHabitFromHistory(
+  sessions: Array<{ kwh: number; cost: number; durationMinutes: number; network?: string }>
+): LearnedUserHabit {
+  if (!sessions || sessions.length === 0) {
+    return {
+      inferredPreference: "balanced",
+      habitTitle: "Balanced Commuter",
+      description: "Standard balanced optimization across distance, speed, and cost.",
+      speedBias: 0,
+      priceBias: 0,
+      avgSpeedKw: 30,
+      avgPricePerKwh: 18,
+      totalSessionsAnalyzed: 0,
+    };
+  }
+
+  let totalKwSpeed = 0;
+  let totalPricePerKwh = 0;
+  let fastSessionCount = 0;
+  let cheapSessionCount = 0;
+
+  for (const s of sessions) {
+    const hours = Math.max(0.1, (s.durationMinutes || 30) / 60);
+    const speed = s.kwh / hours;
+    totalKwSpeed += speed;
+
+    const unitPrice = s.cost / Math.max(1, s.kwh);
+    totalPricePerKwh += unitPrice;
+
+    // Fast DC indicators: speed >= 40 kW or network known for high-speed charging or price tolerance
+    if (speed >= 38 || (s.network && (s.network.includes("Jio-bp") || s.network.includes("Zeon") || s.network.includes("Fast")))) {
+      fastSessionCount++;
+    }
+    // Budget indicators: unit price <= 16 ₹/kWh or low speed AC usage
+    if (unitPrice <= 16 || speed <= 25) {
+      cheapSessionCount++;
+    }
+  }
+
+  const avgSpeedKw = Math.round(totalKwSpeed / sessions.length);
+  const avgPricePerKwh = Math.round((totalPricePerKwh / sessions.length) * 10) / 10;
+
+  if (fastSessionCount > cheapSessionCount || avgSpeedKw >= 42) {
+    return {
+      inferredPreference: "fastest",
+      habitTitle: "Speed Seeker",
+      description: `Prefers high-power DC fast charging (Avg ${avgSpeedKw} kW in history).`,
+      speedBias: 0.22,
+      priceBias: -0.10,
+      avgSpeedKw,
+      avgPricePerKwh,
+      totalSessionsAnalyzed: sessions.length,
+    };
+  }
+
+  if (cheapSessionCount > fastSessionCount || avgPricePerKwh <= 16.5) {
+    return {
+      inferredPreference: "cheapest",
+      habitTitle: "Budget Conscious",
+      description: `Prefers economical charging hubs (Avg ₹${avgPricePerKwh}/kWh in history).`,
+      speedBias: -0.12,
+      priceBias: 0.25,
+      avgSpeedKw,
+      avgPricePerKwh,
+      totalSessionsAnalyzed: sessions.length,
+    };
+  }
+
+  return {
+    inferredPreference: "balanced",
+    habitTitle: "Balanced Commuter",
+    description: "Evenly balances travel time, charger speed, and charging rates.",
+    speedBias: 0,
+    priceBias: 0,
+    avgSpeedKw,
+    avgPricePerKwh,
+    totalSessionsAnalyzed: sessions.length,
+  };
+}
+
 export function scoreStation(
   station: Station,
   batteryPercent: number,
   allStations: Station[],
   vehicle?: ScoringVehicle | null,
-  preference?: ChargingPreference | null
+  preference?: ChargingPreference | null,
+  learnedHabit?: LearnedUserHabit | null
 ): ScoredStation {
   if (allStations.length === 0) {
     return {
@@ -127,6 +224,30 @@ export function scoreStation(
     else if (preference === "nearest") applyNudge("dist");
   }
 
+  // 3b. Personalisation from History: Apply learned habit if no manual override
+  const effectiveHabit = (!preference || preference === "balanced") ? learnedHabit : null;
+  if (effectiveHabit && effectiveHabit.inferredPreference !== "balanced") {
+    if (effectiveHabit.inferredPreference === "fastest") {
+      wSpeed += 0.22;
+      wPrice = Math.max(0.05, wPrice - 0.12);
+      wDist = Math.max(0.10, wDist - 0.08);
+    } else if (effectiveHabit.inferredPreference === "cheapest") {
+      wPrice += 0.26;
+      wSpeed = Math.max(0.05, wSpeed - 0.15);
+      wWait = Math.max(0.08, wWait - 0.08);
+    }
+
+    // Renormalize weights so total is exactly 1.0
+    const totalW = wDist + wSpeed + wWait + wPrice + wAvail;
+    if (totalW > 0) {
+      wDist /= totalW;
+      wSpeed /= totalW;
+      wWait /= totalW;
+      wPrice /= totalW;
+      wAvail /= totalW;
+    }
+  }
+
   // Calculate raw score
   let rawScore =
     (distNorm * wDist +
@@ -188,6 +309,8 @@ export function scoreStation(
         ? "Cheapest"
         : "Nearest";
     prefix = `Matches your ${prefName} preference`;
+  } else if (effectiveHabit && effectiveHabit.inferredPreference !== "balanced") {
+    prefix = `Learned habit: ${effectiveHabit.habitTitle}`;
   } else if (batteryPercent < 25) {
     prefix = "Best for low battery";
   } else if (batteryPercent > 70) {
@@ -211,10 +334,11 @@ export function scoreAllStations(
   stations: Station[],
   batteryPercent: number,
   vehicle?: ScoringVehicle | null,
-  preference?: ChargingPreference | null
+  preference?: ChargingPreference | null,
+  learnedHabit?: LearnedUserHabit | null
 ): ScoredStation[] {
   return stations
-    .map((st) => scoreStation(st, batteryPercent, stations, vehicle, preference))
+    .map((st) => scoreStation(st, batteryPercent, stations, vehicle, preference, learnedHabit))
     .sort((a, b) => {
       // Incompatible always ranked last
       if (a.isIncompatible && !b.isIncompatible) return 1;
