@@ -227,8 +227,11 @@ export default function DiscoverPage() {
   const [selectedStation, setSelectedStation] = useState<ScoredStation | null>(null);
   const [showRangeSetup, setShowRangeSetup] = useState(false);
   const [rangeBannerDismissed, setRangeBannerDismissed] = useState(false);
-  // Battery popup — open by default every time the page mounts
-  const [showBatteryPopup, setShowBatteryPopup] = useState(true);
+  // Battery popup — only show once per session (cleared on refresh / logout)
+  const [showBatteryPopup, setShowBatteryPopup] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("chargehub:batteryPopupDismissed") !== "true";
+  });
   const [batteryInput, setBatteryInput] = useState<string>(String(batteryPercent));
 
   // Location State
@@ -817,7 +820,7 @@ export default function DiscoverPage() {
                 </div>
               </div>
               <button
-                onClick={() => setShowBatteryPopup(false)}
+                onClick={() => { setShowBatteryPopup(false); sessionStorage.setItem("chargehub:batteryPopupDismissed", "true"); }}
                 className="p-1.5 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X size={13} />
@@ -907,6 +910,7 @@ export default function DiscoverPage() {
                 const val = Math.max(5, Math.min(100, Number(batteryInput) || batteryPercent));
                 setBatteryPercent(val);
                 setShowBatteryPopup(false);
+                sessionStorage.setItem("chargehub:batteryPopupDismissed", "true");
               }}
               className="w-full bg-[#0F172A] text-[#7EF000] font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 hover:bg-slate-800 active:scale-98 transition-all cursor-pointer border border-slate-800 shadow-sm"
             >

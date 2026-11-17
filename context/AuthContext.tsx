@@ -141,6 +141,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn("Logout error:", err);
     } finally {
       setUser(null);
+      // Clear session-level flags so they re-appear after re-login
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("chargehub:batteryPopupDismissed");
+      }
       router.replace("/login");
     }
   };
