@@ -26,7 +26,7 @@ import { Station } from "@/types/station";
 export default function StationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { batteryPercent } = useApp();
+  const { batteryPercent, activeSession, startChargingSession } = useApp();
   const { activeVehicle } = useVehicles();
   const { user } = useAuth();
   const { stations, getStationById, loading: contextLoading } = useStations();
@@ -35,6 +35,7 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
   const [stationDoc, setStationDoc] = useState<Station | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [showConflictModal, setShowConflictModal] = useState<boolean>(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -432,14 +433,78 @@ export default function StationDetailPage({ params }: { params: Promise<{ id: st
           <span>Get Direction</span>
         </button>
 
-        <Link
-          href={`/session/${station.id}`}
+        <button
+          onClick={() => {
+            if (activeSession) {
+              if (String(activeSession.stationId) === String(station.id)) {
+                router.push("/session");
+              } else {
+                setShowConflictModal(true);
+              }
+              return;
+            }
+
+            const res = startChargingSession({
+              stationId: station.id,
+              stationName: station.name,
+              network: station.network,
+              speedKw: station.speedKw,
+              pricePerKwh: station.price ?? 15,
+              connectorType: activeVehicle?.connectorType,
+            });
+
+            if (res.success) {
+              router.push("/session");
+            } else {
+              setShowConflictModal(true);
+            }
+          }}
           className="flex-[1.4] bg-[#7EF000] text-slate-950 hover:bg-[#70D800] font-black py-3.5 rounded-2xl flex items-center justify-center gap-2 text-xs transition-opacity shadow-[0_4px_16px_rgba(126,240,0,0.45)] cursor-pointer"
         >
           <Zap size={16} className="fill-slate-950 stroke-none" />
-          <span>Start Charging</span>
-        </Link>
+          <span>
+            {activeSession && String(activeSession.stationId) === String(station.id)
+              ? "View Active Session"
+              : "Start Charging"}
+          </span>
+        </button>
       </div>
+
+      {/* ── Conflict Modal: Only one active session at a time ── */}
+      {showConflictModal && activeSession && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-xs w-full text-center shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3 border-2 border-amber-300">
+              <Zap size={24} className="fill-amber-600 stroke-none" />
+            </div>
+            <h3 className="text-base font-black text-slate-950 mb-1">
+              Charging Already in Progress
+            </h3>
+            <p className="text-xs text-slate-500 font-bold mb-4 leading-relaxed">
+              You already have an active charging session running at{" "}
+              <span className="text-slate-900 font-black">{activeSession.stationName}</span>.
+              ChargeHub allows one active session at a time.
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setShowConflictModal(false);
+                  router.push("/session");
+                }}
+                className="w-full py-3 bg-[#7EF000] hover:bg-[#72db00] text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-[0_4px_14px_rgba(126,240,0,0.4)] cursor-pointer"
+              >
+                <span>Open Active Session</span>
+              </button>
+              <button
+                onClick={() => setShowConflictModal(false)}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

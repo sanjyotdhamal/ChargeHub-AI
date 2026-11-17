@@ -2,41 +2,71 @@
 
 import React, { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Square, ShieldCheck, MapPin, AlertCircle } from "lucide-react";
+import { Zap, AlertCircle, ArrowRight } from "lucide-react";
 import { useStations } from "@/context/StationsContext";
 import { useApp } from "@/context/AppContext";
 import { useVehicles } from "@/context/VehicleContext";
-import ChargingRing from "@/components/ChargingRing";
 import { Station } from "@/types/station";
 
-export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+export default function SessionDynamicPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { batteryPercent: initialBattery, setBatteryPercent, addSessionRecord, deductWalletMoney } = useApp();
+  const stationId = resolvedParams.id;
+
+  const { activeSession, startChargingSession } = useApp();
   const { effectiveVehicle } = useVehicles();
   const { getStationById, stations, loading: contextLoading } = useStations();
 
-  const stationId = resolvedParams.id;
   const [station, setStation] = useState<Station | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
+    // If active session already exists for THIS station, immediately redirect to /session
+    if (activeSession && String(activeSession.stationId) === String(stationId)) {
+      router.replace("/session");
+      return;
+    }
+
+    // If active session already exists for a DIFFERENT station, flag conflict
+    if (activeSession && String(activeSession.stationId) !== String(stationId)) {
+      setConflictError(`Charging already in progress at ${activeSession.stationName}`);
+      setLoading(false);
+      return;
+    }
+
     let isCancelled = false;
 
-    async function fetchStation() {
+    async function initializeAndStart() {
       setLoading(true);
       const found = await getStationById(stationId);
       if (isCancelled) return;
-      if (found) {
-        setStation(found);
-      } else if (stations.length > 0) {
-        setStation(stations[0]);
+
+      const targetStation = found || (stations.length > 0 ? stations[0] : null);
+      if (targetStation) {
+        setStation(targetStation);
+        const res = startChargingSession({
+          stationId: targetStation.id,
+          stationName: targetStation.name,
+          network: targetStation.network,
+          speedKw: targetStation.speedKw,
+          pricePerKwh: targetStation.price ?? 15,
+          connectorType: effectiveVehicle.connectorType,
+        });
+
+        if (res.success) {
+          router.replace("/session");
+        } else {
+          setConflictError(res.error || "Charging already in progress");
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     if (stationId) {
-      fetchStation();
+      initializeAndStart();
     } else {
       setLoading(false);
     }
@@ -44,180 +74,59 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     return () => {
       isCancelled = true;
     };
-  }, [stationId, getStationById, stations]);
+  }, [stationId, activeSession, getStationById, stations, startChargingSession, effectiveVehicle, router]);
 
-  const [battery, setBattery] = useState<number>(initialBattery);
-  const [kwhDelivered, setKwhDelivered] = useState<number>(0.0);
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-  const [isFinished, setIsFinished] = useState<boolean>(false);
-
-  // Price & charging speed capped by vehicle max charging power
-  const price = station?.price ?? 15;
-  const speedKw = station?.speedKw ?? 60;
-  const currentCost = parseFloat((kwhDelivered * price).toFixed(2));
-  const maxKwhCapacity = effectiveVehicle.batteryCapacityKwh;
-  const effectiveChargingKw = Math.min(speedKw, effectiveVehicle.maxChargingPowerKw);
-
-  // Simulated live charging tick interval
-  useEffect(() => {
-    if (isFinished || !station) return;
-
-    const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
-      // Delivery rate simulation
-      const kwhIncrement = (effectiveChargingKw / 3600) * 8; 
-      setKwhDelivered((prev) => parseFloat((prev + kwhIncrement).toFixed(2)));
-
-      setBattery((prev) => {
-        if (prev >= 99) return 100;
-        return parseFloat((prev + 0.25).toFixed(1));
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isFinished, effectiveChargingKw, station]);
-
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const handleStopCharging = () => {
-    if (!station) return;
-    setIsFinished(true);
-    deductWalletMoney(currentCost);
-    setBatteryPercent(Math.round(battery));
-
-    const matchedConnector =
-      station.chargers.find((c) => c.connector === effectiveVehicle.connectorType)?.connector ||
-      station.chargers[0]?.connector ||
-      effectiveVehicle.connectorType;
-
-    // Record session history
-    addSessionRecord({
-      stationId: station.id,
-      stationName: station.name,
-      network: station.network,
-      date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-      kwh: parseFloat(kwhDelivered.toFixed(1)),
-      cost: currentCost > 0 ? currentCost : 120,
-      durationMinutes: Math.max(1, Math.round(elapsedSeconds / 60)),
-      connectorType: matchedConnector,
-    });
-
-    // Navigate to history page after small delay
-    setTimeout(() => {
-      router.push("/history");
-    }, 800);
-  };
-
-  if (loading || (contextLoading && !station)) {
+  if (conflictError && activeSession) {
     return (
       <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-10 h-10 rounded-full border-4 border-[#7EF000] border-t-transparent animate-spin mb-3" />
-        <p className="text-xs font-black text-slate-700 uppercase tracking-wider">
-          Initializing Charging Session...
+        <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3 border-2 border-amber-300 shadow-sm">
+          <Zap size={28} className="fill-amber-600 stroke-none" />
+        </div>
+        <h2 className="text-lg font-black text-slate-900 mb-1">Charging Already in Progress</h2>
+        <p className="text-xs text-slate-500 mb-4 max-w-xs">
+          You currently have an active charging session at{" "}
+          <strong className="text-slate-900">{activeSession.stationName}</strong>. ChargeHub AI allows
+          one active session at a time.
         </p>
+        <button
+          onClick={() => router.push("/session")}
+          className="bg-[#7EF000] text-slate-950 px-5 py-3 rounded-xl text-xs font-black shadow-md flex items-center gap-2 cursor-pointer hover:bg-[#72db00] transition-colors"
+        >
+          <span>Open Active Session</span>
+          <ArrowRight size={14} />
+        </button>
+        <button
+          onClick={() => router.back()}
+          className="mt-3 text-xs font-bold text-slate-500 hover:text-slate-800"
+        >
+          Go Back
+        </button>
       </div>
     );
   }
 
-  if (!station) {
+  if (loading || contextLoading) {
     return (
       <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
-        <AlertCircle size={40} className="text-red-500 mb-2" />
-        <h2 className="text-lg font-black text-slate-900 mb-1">Session Error</h2>
-        <p className="text-xs text-slate-500 mb-4">Could not load station details for charging session.</p>
-        <button
-          onClick={() => router.push("/discover")}
-          className="bg-[#7EF000] text-slate-950 px-4 py-2 rounded-xl text-xs font-black shadow-sm"
-        >
-          Return to Map
-        </button>
+        <div className="w-9 h-9 rounded-full border-3 border-[#7EF000] border-t-transparent animate-spin mb-3" />
+        <p className="text-xs font-black text-slate-700 uppercase tracking-wider">
+          Connecting to Charger...
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full bg-[#F4F6F9] flex flex-col justify-between p-4 text-slate-900 select-none overflow-y-auto no-scrollbar">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between pt-1">
-        <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#7EF000] animate-ping" />
-          <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
-            Charging Active
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1 text-[11px] font-extrabold bg-white text-slate-900 border border-slate-200 px-3 py-1 rounded-full shadow-sm">
-          <ShieldCheck size={14} className="text-slate-950" />
-          <span>Unified Pay</span>
-        </div>
-      </div>
-
-      {/* ── Station Name ── */}
-      <div className="text-center mt-2">
-        <h1 className="text-base font-black text-slate-900 truncate">{station.name}</h1>
-        <p className="text-xs text-slate-500 font-extrabold flex items-center justify-center gap-1 mt-0.5">
-          <MapPin size={12} className="text-slate-400" />
-          {station.network} · Port {station.chargers[0]?.id || "A1"}
-        </p>
-      </div>
-
-      {/* ── Animated Circular Charging Ring ── */}
-      <ChargingRing batteryPercent={battery} powerKw={station.speedKw} />
-
-      {/* ── Stats Grid matching light design ── */}
-      <div className="grid grid-cols-2 gap-3 my-2">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-center shadow-sm">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            Charging Rate
-          </span>
-          <div className="text-lg font-black text-slate-900 mt-0.5">
-            {station.speedKw} <span className="text-xs text-slate-500 font-bold">kW</span>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-center shadow-sm">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            Time Elapsed
-          </span>
-          <div className="text-lg font-black text-slate-900 mt-0.5">
-            {formatTime(elapsedSeconds)}
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-center shadow-sm">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            Energy Delivered
-          </span>
-          <div className="text-lg font-black text-slate-900 mt-0.5">
-            {kwhDelivered.toFixed(2)} <span className="text-xs text-slate-500 font-bold">kWh</span>
-          </div>
-        </div>
-
-        <div className="bg-white border-2 border-[#7EF000] rounded-2xl p-3 flex flex-col items-center justify-center shadow-sm">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            Charging Cost
-          </span>
-          <div className="text-lg font-black text-slate-950 mt-0.5">
-            ₹{currentCost.toFixed(2)}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Stop Charging Primary Button ── */}
-      <div className="pt-2 pb-4">
-        <button
-          onClick={handleStopCharging}
-          disabled={isFinished}
-          className="w-full bg-[#7EF000] hover:bg-[#70D800] text-slate-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-sm shadow-[0_4px_20px_rgba(126,240,0,0.45)] transition-all active:scale-[0.99] cursor-pointer"
-        >
-          <Square size={16} className="fill-slate-950 stroke-none" />
-          <span>{isFinished ? "Ending Session..." : "Stop Charging"}</span>
-        </button>
-      </div>
+    <div className="w-full h-full bg-[#F4F6F9] flex flex-col items-center justify-center p-6 text-center">
+      <AlertCircle size={40} className="text-red-500 mb-2" />
+      <h2 className="text-lg font-black text-slate-900 mb-1">Session Error</h2>
+      <p className="text-xs text-slate-500 mb-4">Could not load station details for charging session.</p>
+      <button
+        onClick={() => router.push("/discover")}
+        className="bg-[#7EF000] text-slate-950 px-4 py-2.5 rounded-xl text-xs font-black shadow-sm"
+      >
+        Return to Map
+      </button>
     </div>
   );
 }

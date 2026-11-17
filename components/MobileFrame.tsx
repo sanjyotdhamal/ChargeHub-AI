@@ -2,6 +2,7 @@
 
 import React from "react";
 import BottomTabBar from "./BottomTabBar";
+import ActiveSessionBar from "./ActiveSessionBar";
 import ErrorBoundary from "./ErrorBoundary";
 
 export default function MobileFrame({ children }: { children: React.ReactNode }) {
@@ -59,6 +60,8 @@ export default function MobileFrame({ children }: { children: React.ReactNode })
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
+          {/* ── Floating Active Session Pill Bar ── */}
+          <ActiveSessionBar />
         </div>
 
         {/* ── Global Bottom Navigation Dock ── */}

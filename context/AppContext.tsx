@@ -1,8 +1,78 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAuth } from "./AuthContext";
 import { LearnedUserHabit, inferHabitFromHistory } from "@/lib/scoring";
+
+/**
+ * Global realistic charging simulation constant:
+ * Battery rises 1% every 3.5 seconds.
+ */
+export const SECONDS_PER_PERCENT = 3.5;
+
+export type ActiveChargingSession = {
+  stationId: string | number;
+  stationName: string;
+  network?: string;
+  connectorType?: string;
+  speedKw?: number;
+  pricePerKwh: number;
+  startedAt: number; // Unix epoch ms
+  startPercent: number;
+  vehicleBatteryCapacity: number;
+};
+
+export type ActiveSessionProgress = {
+  currentBattery: number;
+  addedPercent: number;
+  kwhDelivered: number;
+  cost: number;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+  isFull: boolean;
+  isWalletDepleted: boolean;
+};
+
+/**
+ * Computes live session progress directly from timestamps so charging progresses
+ * continuously even when leaving screens, switching tabs, or refreshing.
+ */
+export function computeActiveSessionProgress(
+  session: ActiveChargingSession,
+  now: number = Date.now(),
+  walletBalance: number = Infinity
+): ActiveSessionProgress {
+  const elapsedSeconds = Math.max(0, (now - session.startedAt) / 1000);
+  const rawAddedPercent = elapsedSeconds / SECONDS_PER_PERCENT;
+  const maxBatteryGain = Math.max(0, 100 - session.startPercent);
+
+  // Check how much battery can be charged with the available wallet balance
+  const kwhPerPercent = session.vehicleBatteryCapacity / 100;
+  const maxAffordableKwh = session.pricePerKwh > 0 ? Math.max(0, walletBalance) / session.pricePerKwh : Infinity;
+  const maxAffordablePercent = kwhPerPercent > 0 ? maxAffordableKwh / kwhPerPercent : Infinity;
+
+  const isFull = rawAddedPercent >= maxBatteryGain;
+  const isWalletDepleted = !isFull && rawAddedPercent >= maxAffordablePercent;
+
+  const effectiveAddedPercent = Math.min(rawAddedPercent, maxBatteryGain, maxAffordablePercent);
+  const currentBattery = Math.min(100, parseFloat((session.startPercent + effectiveAddedPercent).toFixed(1)));
+  const kwhDelivered = parseFloat((effectiveAddedPercent * kwhPerPercent).toFixed(2));
+  const cost = parseFloat((kwhDelivered * session.pricePerKwh).toFixed(2));
+
+  const remainingPercent = Math.max(0, 100 - currentBattery);
+  const remainingSeconds = Math.round(remainingPercent * SECONDS_PER_PERCENT);
+
+  return {
+    currentBattery,
+    addedPercent: effectiveAddedPercent,
+    kwhDelivered,
+    cost,
+    elapsedSeconds: Math.floor(elapsedSeconds),
+    remainingSeconds,
+    isFull,
+    isWalletDepleted,
+  };
+}
 
 export type Transaction = {
   id: string;
@@ -430,6 +500,27 @@ type AppContextType = {
   userHabit: LearnedUserHabit;
   activePersona: "default" | "speed" | "budget";
   setPersonaHabit: (persona: "default" | "speed" | "budget") => void;
+  // Global Active Charging Session
+  activeSession: ActiveChargingSession | null;
+  startChargingSession: (params: {
+    stationId: string | number;
+    stationName: string;
+    network?: string;
+    connectorType?: string;
+    speedKw?: number;
+    pricePerKwh: number;
+  }) => { success: boolean; error?: string };
+  stopChargingSession: (reason?: "completed" | "wallet_depleted" | "user_stopped") => {
+    sessionRecord: ChargingSessionRecord | null;
+    finalBattery: number;
+    finalCost: number;
+    reason: string;
+  };
+  sessionJustCompleted: {
+    sessionRecord: ChargingSessionRecord;
+    reason: "completed" | "wallet_depleted" | "user_stopped";
+  } | null;
+  clearSessionJustCompleted: () => void;
 };
 
 const DEFAULT_VEHICLE: VehicleProfile = {
@@ -464,6 +555,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [manualBatteryCapacityKwh, setManualBatteryCapacityKwh] = useState<number | null>(null);
   // Persona habit state ("default" analyzes real sessionHistory; "speed" & "budget" test personas)
   const [activePersona, setActivePersona] = useState<"default" | "speed" | "budget">("default");
+  // Active charging session persisted across views & reloads
+  const [activeSession, setActiveSession] = useState<ActiveChargingSession | null>(null);
+  const [sessionJustCompleted, setSessionJustCompleted] = useState<{
+    sessionRecord: ChargingSessionRecord;
+    reason: "completed" | "wallet_depleted" | "user_stopped";
+  } | null>(null);
 
   const userHabit = useMemo(() => {
     if (activePersona === "speed") {
@@ -491,6 +588,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setVehicleProfile(DEFAULT_VEHICLE);
       setUserProfile(DEFAULT_USER_PROFILE);
       setBatteryPercent(30);
+      setActiveSession(null);
+      setSessionJustCompleted(null);
       setLoadedUserId(null);
       prevUserRef.current = null;
       return;
@@ -556,6 +655,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } else {
         setBatteryPercent(30);
       }
+
+      // Check active charging session
+      const savedActiveSess = localStorage.getItem(`chargehub:${userId}:active_session`);
+      if (savedActiveSess) {
+        try {
+          const parsedSess: ActiveChargingSession = JSON.parse(savedActiveSess);
+          const bal = savedBalance !== null ? JSON.parse(savedBalance) : 1450;
+          const prog = computeActiveSessionProgress(parsedSess, Date.now(), bal);
+          if (prog.isFull || prog.isWalletDepleted) {
+            // Concluded while browser was closed/refreshed
+            const finalCost = prog.cost;
+            const finalBattery = Math.min(100, Math.round(prog.currentBattery));
+            const newBal = Math.max(0, bal - finalCost);
+            setWalletBalance(newBal);
+            setBatteryPercent(finalBattery);
+            const rec: ChargingSessionRecord = {
+              id: "sess-" + Date.now(),
+              stationId: parsedSess.stationId,
+              stationName: parsedSess.stationName,
+              network: parsedSess.network || "ChargeHub Network",
+              date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+              kwh: prog.kwhDelivered,
+              cost: finalCost,
+              durationMinutes: Math.max(1, Math.round(prog.elapsedSeconds / 60)),
+              connectorType: parsedSess.connectorType || "CCS2",
+            };
+            setSessionHistory((prev) => [rec, ...prev]);
+            const newTx: Transaction = {
+              id: "tx-" + Date.now(),
+              stationName: rec.stationName,
+              network: rec.network,
+              amount: finalCost,
+              type: "charge",
+              date: "Just now",
+            };
+            setTransactions((prev) => [newTx, ...prev]);
+            setActiveSession(null);
+            setSessionJustCompleted({
+              sessionRecord: rec,
+              reason: prog.isFull ? "completed" : "wallet_depleted",
+            });
+            localStorage.removeItem(`chargehub:${userId}:active_session`);
+          } else {
+            setActiveSession(parsedSess);
+          }
+        } catch (e) {
+          console.warn("Could not parse saved active session", e);
+        }
+      } else {
+        setActiveSession(null);
+      }
     } catch (err) {
       console.warn("Could not read user data from localStorage", err);
     } finally {
@@ -575,10 +725,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`chargehub:${userId}:vehicle_profile`, JSON.stringify(vehicleProfile));
       localStorage.setItem(`chargehub:${userId}:user_profile`, JSON.stringify(userProfile));
       localStorage.setItem(`chargehub:${userId}:battery_percent`, JSON.stringify(batteryPercent));
+      if (activeSession) {
+        localStorage.setItem(`chargehub:${userId}:active_session`, JSON.stringify(activeSession));
+      } else {
+        localStorage.removeItem(`chargehub:${userId}:active_session`);
+      }
     } catch (err) {
       console.warn("Could not write to user localStorage", err);
     }
-  }, [walletBalance, transactions, sessionHistory, vehicleProfile, userProfile, batteryPercent, user, loadedUserId]);
+  }, [walletBalance, transactions, sessionHistory, vehicleProfile, userProfile, batteryPercent, activeSession, user, loadedUserId]);
 
   const addWalletMoney = (amount: number) => {
     setWalletBalance((prev) => prev + amount);
@@ -631,6 +786,106 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const stopChargingSession = useCallback(
+    (reason: "completed" | "wallet_depleted" | "user_stopped" = "user_stopped") => {
+      if (!activeSession) {
+        return { sessionRecord: null, finalBattery: batteryPercent, finalCost: 0, reason };
+      }
+
+      const progress = computeActiveSessionProgress(activeSession, Date.now(), walletBalance);
+      const finalBattery = Math.min(100, Math.round(progress.currentBattery));
+      const finalCost = progress.cost;
+
+      // Deduct cost from wallet ONCE
+      deductWalletMoney(finalCost);
+      // Update battery % in app
+      setBatteryPercent(finalBattery);
+
+      const record: ChargingSessionRecord = {
+        id: "sess-" + Date.now(),
+        stationId: activeSession.stationId,
+        stationName: activeSession.stationName,
+        network: activeSession.network || "ChargeHub Network",
+        date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        kwh: progress.kwhDelivered,
+        cost: finalCost,
+        durationMinutes: Math.max(1, Math.round(progress.elapsedSeconds / 60)),
+        connectorType: activeSession.connectorType || "CCS2",
+      };
+
+      setSessionHistory((prev) => [record, ...prev]);
+
+      const newTx: Transaction = {
+        id: "tx-" + Date.now(),
+        stationName: record.stationName,
+        network: record.network,
+        amount: finalCost,
+        type: "charge",
+        date: "Just now",
+      };
+      setTransactions((prev) => [newTx, ...prev]);
+
+      setActiveSession(null);
+      setSessionJustCompleted({ sessionRecord: record, reason });
+
+      return { sessionRecord: record, finalBattery, finalCost, reason };
+    },
+    [activeSession, batteryPercent, walletBalance, deductWalletMoney]
+  );
+
+  const startChargingSession = useCallback(
+    (params: {
+      stationId: string | number;
+      stationName: string;
+      network?: string;
+      connectorType?: string;
+      speedKw?: number;
+      pricePerKwh: number;
+    }) => {
+      if (activeSession) {
+        return { success: false, error: "Charging already in progress" };
+      }
+
+      const effectiveCapacity = manualBatteryCapacityKwh || vehicleProfile.batteryCapacityKwh || 40.5;
+      const newSession: ActiveChargingSession = {
+        stationId: params.stationId,
+        stationName: params.stationName,
+        network: params.network,
+        connectorType: params.connectorType,
+        speedKw: params.speedKw,
+        pricePerKwh: params.pricePerKwh,
+        startedAt: Date.now(),
+        startPercent: batteryPercent,
+        vehicleBatteryCapacity: effectiveCapacity,
+      };
+
+      setActiveSession(newSession);
+      setSessionJustCompleted(null);
+      return { success: true };
+    },
+    [activeSession, batteryPercent, manualBatteryCapacityKwh, vehicleProfile]
+  );
+
+  const clearSessionJustCompleted = useCallback(() => {
+    setSessionJustCompleted(null);
+  }, []);
+
+  // Background monitor: Auto-finish when 100% full or when wallet runs out
+  useEffect(() => {
+    if (!activeSession) return;
+
+    const interval = setInterval(() => {
+      const progress = computeActiveSessionProgress(activeSession, Date.now(), walletBalance);
+      if (progress.isFull) {
+        stopChargingSession("completed");
+      } else if (progress.isWalletDepleted) {
+        stopChargingSession("wallet_depleted");
+      }
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, [activeSession, walletBalance, stopChargingSession]);
+
   return (
     <AppContext.Provider
       value={{
@@ -655,6 +910,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userHabit,
         activePersona,
         setPersonaHabit,
+        activeSession,
+        startChargingSession,
+        stopChargingSession,
+        sessionJustCompleted,
+        clearSessionJustCompleted,
       }}
     >
       {children}
